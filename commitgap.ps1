@@ -50,14 +50,21 @@ if (Test-Path $ReleaseCli) {
     if (-not $needsBuild) {
         $built = (Get-Item $CliJar).LastWriteTime
         $newer = Get-ChildItem -Path $CommitGapHome -Recurse -File -ErrorAction SilentlyContinue |
-            Where-Object { ($_.FullName -match '[\\/]src[\\/]' -or $_.Name -eq 'pom.xml') -and
+            Where-Object { ($_.FullName -match '[\\/]src[\\/]main[\\/]' -or $_.Name -eq 'pom.xml') -and
                            $_.FullName -notmatch '[\\/](target|\.git)[\\/]' -and $_.LastWriteTime -gt $built } |
             Select-Object -First 1
         $needsBuild = [bool]$newer
     }
     if ($needsBuild) {
         [Console]::Error.WriteLine('commitgap: building with the Maven Wrapper (first run downloads Maven and dependencies)...')
-        if (-not $env:JAVA_HOME) { $env:JAVA_HOME = Split-Path (Split-Path $Java -Parent) -Parent }
+        if (-not $env:JAVA_HOME) {
+            # Ask the JVM where it lives; the java on PATH can be a shim (for example Oracle's javapath).
+            $psi.Arguments = '-XshowSettings:properties -version'
+            $p2 = [System.Diagnostics.Process]::Start($psi)
+            $settings = $p2.StandardError.ReadToEnd()
+            $p2.WaitForExit()
+            if ($settings -match 'java\.home = (.+)') { $env:JAVA_HOME = $Matches[1].Trim() }
+        }
         $mvnw = if ($IsLinux -or $IsMacOS) { Join-Path $CommitGapHome 'mvnw' } else { Join-Path $CommitGapHome 'mvnw.cmd' }
         Push-Location $CommitGapHome
         try {

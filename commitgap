@@ -39,12 +39,17 @@ else
   if [ ! -f "$CLI_JAR" ] || [ ! -f "$DEMO_JAR" ]; then
     needs_build=1
   elif [ -n "$(find "$COMMITGAP_HOME" -path "$COMMITGAP_HOME/.git" -prune -o \
-        \( -path '*/src/*' -o -name pom.xml \) -newer "$CLI_JAR" -print -quit 2>/dev/null)" ]; then
+        \( -path '*/src/main/*' -o -name pom.xml \) -newer "$CLI_JAR" -print -quit 2>/dev/null)" ]; then
     needs_build=1
   fi
   if [ "$needs_build" = 1 ]; then
     echo "commitgap: building with the Maven Wrapper (first run downloads Maven and dependencies)..." >&2
-    (cd "$COMMITGAP_HOME" && JAVA_HOME="${JAVA_HOME:-$(cd "$(dirname "$JAVA")/.." && pwd)}" ./mvnw -q -B -DskipTests package) \
+    if [ -z "${JAVA_HOME:-}" ]; then
+      # Ask the JVM where it lives; the java on PATH can be a shim (for example Oracle's javapath).
+      JAVA_HOME="$("$JAVA" -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.home = //p' | head -n 1)"
+      export JAVA_HOME
+    fi
+    (cd "$COMMITGAP_HOME" && ./mvnw -q -B -DskipTests package) \
       || fail "build failed; run ./mvnw -DskipTests package to see the details."
   fi
 fi
