@@ -1,0 +1,42 @@
+# Defaults for the demo processes. The CommitGap runtime overrides connection settings, role and
+# strategy through environment variables for every container it starts.
+spring:
+  application:
+    name: commitgap-demo
+  main:
+    banner-mode: off
+  datasource:
+    hikari:
+      maximum-pool-size: 6
+      connection-timeout: 5000
+  rabbitmq:
+    # Same broker settings for every strategy: confirms, returns, mandatory publishing.
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    connection-timeout: 2s
+    requested-heartbeat: 5s
+
+server:
+  port: 8080
+  shutdown: immediate
+
+commitgap:
+  role: producer
+  strategy: naive-dual-write
+  consumer-name: stock-consumer
+  consumer-workers: 1
+  consumer-prefetch: 5
+  initial-stock: 100
+  relay-gate-open: true
+  relay-poll-millis: 100
+  relay-max-attempts: 50
+  confirm-timeout-millis: 3000
+  barrier-timeout-seconds: 300
+
+logging:
+  level:
+    root: WARN
+    com.example.commitgap: INFO
+    org.springframework.boot.web: INFO
