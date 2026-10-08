@@ -211,7 +211,12 @@
                   <version>[3.9,)</version>
                 </requireMavenVersion>
                 <dependencyConvergence/>
-                <banDynamicVersions/>
+                <banDynamicVersions>
+                  <!-- Reactor modules share the project version; every external dependency stays pinned. -->
+                  <ignores>
+                    <ignore>com.example.commitgap:*</ignore>
+                  </ignores>
+                </banDynamicVersions>
               </rules>
             </configuration>
           </execution>
