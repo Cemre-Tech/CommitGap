@@ -13,7 +13,8 @@ import java.util.UUID;
  * Counters derived from the snapshot. Deliveries, consumer attempts and business effects are kept
  * apart on purpose: a redelivery is not a duplicate effect unless the ledger shows one.
  *
- * @param brokerDeliveries     deliveries reported by the broker (includes redeliveries); -1 if not measured
+ * @param brokerPublished      messages published to the queue according to the broker's sampled statistics; -1 if not measured
+ * @param brokerDeliveries     deliveries reported by the broker's sampled statistics (includes redeliveries); -1 if not measured
  * @param consumerAttempts     deliveries the consumer logged before processing
  * @param businessEffects      stock movement rows
  * @param duplicateEffects     business effects beyond the first for the same event id
