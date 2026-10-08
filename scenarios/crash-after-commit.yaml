@@ -1,0 +1,32 @@
+# The producer is SIGKILLed after its database transaction committed and before the event left
+# the process. The naive producer has no durable record of the event, so it is lost; with an
+# outbox the event is already committed next to the order and the relay delivers it.
+schemaVersion: 1
+id: crash-after-commit
+description: Kill the producer after its database transaction commits, before it publishes.
+workload:
+  seed: 42
+  orders: 20
+  quantityPerOrder: 1
+  initialStock: 100
+  rollbackEvery: 7
+fault:
+  target: producer
+  checkpoint: producer.after-db-commit-before-publish
+  action: kill
+  occurrence: 5
+recovery:
+  action: restart
+observation:
+  timeoutSeconds: 30
+assertions:
+  - committed-order-has-business-effect
+  - stock-changed-once-per-event
+  - rolled-back-order-has-no-effect
+  - stock-matches-committed-orders
+  - dedup-record-matches-business-effect
+  - no-pending-work-after-recovery
+expectedByStrategy:
+  naive-dual-write: VIOLATION_OBSERVED
+  transactional-outbox: CONSISTENT
+  outbox-idempotent: CONSISTENT

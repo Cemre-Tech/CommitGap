@@ -1,0 +1,32 @@
+# The publisher-to-broker link is cut in Toxiproxy while the producer keeps accepting orders, and
+# restored later. The cut is applied while no publish is in flight. Orders accepted during the
+# outage stay in the outbox until the link returns; the naive producer has nowhere to keep them.
+schemaVersion: 1
+id: broker-outage
+description: Cut the publisher-to-broker link while orders are accepted, then restore it.
+workload:
+  seed: 42
+  orders: 20
+  quantityPerOrder: 1
+  initialStock: 100
+  rollbackEvery: 7
+fault:
+  target: broker-link
+  action: network-cut
+  atOrder: 8
+  ordersDuringFault: 5
+recovery:
+  action: restore-network
+observation:
+  timeoutSeconds: 45
+assertions:
+  - committed-order-has-business-effect
+  - stock-changed-once-per-event
+  - rolled-back-order-has-no-effect
+  - stock-matches-committed-orders
+  - dedup-record-matches-business-effect
+  - no-pending-work-after-recovery
+expectedByStrategy:
+  naive-dual-write: VIOLATION_OBSERVED
+  transactional-outbox: CONSISTENT
+  outbox-idempotent: CONSISTENT

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.example.commitgap</groupId>
+    <artifactId>commitgap-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>commitgap-cli</artifactId>
+  <name>CommitGap CLI</name>
+  <description>The commitgap command: commands, options, user messages and exit codes.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.example.commitgap</groupId>
+      <artifactId>commitgap-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.example.commitgap</groupId>
+      <artifactId>commitgap-runtime</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.example.commitgap</groupId>
+      <artifactId>commitgap-report</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>info.picocli</groupId>
+      <artifactId>picocli</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!--
+      Test-only dependency that makes the reactor build the demo before the CLI integration tests,
+      which start the demo's runnable jar in containers. Nothing from it reaches the test classpath.
+    -->
+    <dependency>
+      <groupId>com.example.commitgap</groupId>
+      <artifactId>commitgap-demo</artifactId>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-launcher</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>commitgap-cli</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>repackage</id>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+            <configuration>
+              <!--
+                Only the nested-jar launcher is used; the CLI does not run Spring. This avoids the
+                service-file merging problems of shading Testcontainers and Jackson.
+              -->
+              <mainClass>com.example.commitgap.cli.CommitGapCli</mainClass>
+              <classifier>exec</classifier>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <commitgap.home>${project.basedir}/..</commitgap.home>
+            <commitgap.demoJar>${project.basedir}/../commitgap-demo/target/commitgap-demo-exec.jar</commitgap.demoJar>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

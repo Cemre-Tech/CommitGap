@@ -1,0 +1,32 @@
+# The relay is SIGKILLed after the broker confirmed the message and before the outbox row was
+# marked as sent. After restart the relay publishes the same event (same event id) again.
+# The non-idempotent consumer applies it twice; the idempotent consumer does not.
+schemaVersion: 1
+id: relay-confirm-gap
+description: Kill the relay after a positive publisher confirm, before it marks the outbox row as sent.
+workload:
+  seed: 42
+  orders: 20
+  quantityPerOrder: 1
+  initialStock: 100
+  rollbackEvery: 7
+fault:
+  target: relay
+  checkpoint: relay.after-publisher-confirm-before-outbox-mark
+  action: kill
+  occurrence: 5
+recovery:
+  action: restart
+observation:
+  timeoutSeconds: 30
+assertions:
+  - committed-order-has-business-effect
+  - stock-changed-once-per-event
+  - rolled-back-order-has-no-effect
+  - stock-matches-committed-orders
+  - dedup-record-matches-business-effect
+  - no-pending-work-after-recovery
+expectedByStrategy:
+  naive-dual-write: NOT_APPLICABLE
+  transactional-outbox: VIOLATION_OBSERVED
+  outbox-idempotent: CONSISTENT
