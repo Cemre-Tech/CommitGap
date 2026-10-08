@@ -1,0 +1,26 @@
+# Build output
+target/
+*.class
+
+# CommitGap run directories (reports, logs, manifests)
+.commitgap/
+
+# Maven wrapper downloads
+.mvn/wrapper/maven-wrapper.jar
+
+# IDEs and OS files
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+.DS_Store
+Thumbs.db
+
+# Logs and local environment files
+*.log
+.env
+.env.*
+!.env.example
