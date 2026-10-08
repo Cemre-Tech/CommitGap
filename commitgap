@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# CommitGap launcher for Bash (Linux, macOS, Git Bash/WSL on Windows).
+# Runs the same CLI as commitgap.ps1. Needs Java 21+ and a running Docker engine; installs nothing.
+set -euo pipefail
+
+COMMITGAP_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+fail() {
+  echo "commitgap: $*" >&2
+  exit 2
+}
+
+# Locate Java: JAVA_HOME first, then PATH.
+if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+  JAVA="$JAVA_HOME/bin/java"
+elif command -v java >/dev/null 2>&1; then
+  JAVA="$(command -v java)"
+else
+  fail "Java 21 or newer is required and was not found (set JAVA_HOME or put java on PATH)."
+fi
+
+JAVA_MAJOR="$("$JAVA" -version 2>&1 | head -n 1 | sed -E 's/.*version "([0-9]+).*/\1/')"
+case "$JAVA_MAJOR" in
+  ''|*[!0-9]*) fail "could not determine the Java version of $JAVA" ;;
+esac
+if [ "$JAVA_MAJOR" -lt 21 ]; then
+  fail "Java 21 or newer is required; $JAVA is Java $JAVA_MAJOR."
+fi
+
+if [ -f "$COMMITGAP_HOME/lib/commitgap-cli.jar" ]; then
+  # Release layout
+  CLI_JAR="$COMMITGAP_HOME/lib/commitgap-cli.jar"
+  DEMO_JAR="$COMMITGAP_HOME/lib/commitgap-demo.jar"
+else
+  # Source checkout: build with the Maven Wrapper when the jars are missing or older than the sources.
+  CLI_JAR="$COMMITGAP_HOME/commitgap-cli/target/commitgap-cli-exec.jar"
+  DEMO_JAR="$COMMITGAP_HOME/commitgap-demo/target/commitgap-demo-exec.jar"
+  needs_build=0
+  if [ ! -f "$CLI_JAR" ] || [ ! -f "$DEMO_JAR" ]; then
+    needs_build=1
+  elif [ -n "$(find "$COMMITGAP_HOME" -path "$COMMITGAP_HOME/.git" -prune -o \
+        \( -path '*/src/main/*' -o -name pom.xml \) -newer "$CLI_JAR" -print -quit 2>/dev/null)" ]; then
+    needs_build=1
+  fi
+  if [ "$needs_build" = 1 ]; then
+    echo "commitgap: building with the Maven Wrapper (first run downloads Maven and dependencies)..." >&2
+    if [ -z "${JAVA_HOME:-}" ]; then
+      # Ask the JVM where it lives; the java on PATH can be a shim (for example Oracle's javapath).
+      JAVA_HOME="$("$JAVA" -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.home = //p' | head -n 1)"
+      export JAVA_HOME
+    fi
+    (cd "$COMMITGAP_HOME" && ./mvnw -q -B -DskipTests package) \
+      || fail "build failed; run ./mvnw -DskipTests package to see the details."
+  fi
+fi
+
+# CommitGap removes each run's resources itself (by label), and must be able to keep them on request,
+# so the Testcontainers reaper is disabled unless the user configured it explicitly.
+export TESTCONTAINERS_RYUK_DISABLED="${TESTCONTAINERS_RYUK_DISABLED:-true}"
+
+exec "$JAVA" --enable-native-access=ALL-UNNAMED -Dcommitgap.home="$COMMITGAP_HOME" -Dcommitgap.demoJar="$DEMO_JAR" -jar "$CLI_JAR" "$@"

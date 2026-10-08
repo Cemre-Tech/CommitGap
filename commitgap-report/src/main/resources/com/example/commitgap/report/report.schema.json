@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:commitgap:report:v1",
+  "title": "CommitGap report, schema version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reportSchemaVersion", "kind", "runId", "generatedAt", "cliVersion", "summary", "matrix", "runs"],
+  "properties": {
+    "reportSchemaVersion": { "const": 1 },
+    "kind": { "enum": ["run", "compare", "demo"] },
+    "runId": { "$ref": "#/$defs/runId" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "cliVersion": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cells", "expectationMatched", "expectationNotMatched", "notVerified", "outcomes"],
+      "properties": {
+        "cells": { "type": "integer", "minimum": 0 },
+        "expectationMatched": { "type": "integer", "minimum": 0 },
+        "expectationNotMatched": { "type": "integer", "minimum": 0 },
+        "notVerified": { "type": "integer", "minimum": 0 },
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["CONSISTENT", "VIOLATION_OBSERVED", "INCONCLUSIVE", "NOT_APPLICABLE"],
+          "properties": {
+            "CONSISTENT": { "type": "integer", "minimum": 0 },
+            "VIOLATION_OBSERVED": { "type": "integer", "minimum": 0 },
+            "INCONCLUSIVE": { "type": "integer", "minimum": 0 },
+            "NOT_APPLICABLE": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "matrix": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario", "strategy", "runId", "outcome", "expected", "expectation"],
+        "properties": {
+          "scenario": { "type": "string" },
+          "strategy": { "$ref": "#/$defs/strategy" },
+          "runId": { "$ref": "#/$defs/runId" },
+          "outcome": { "$ref": "#/$defs/outcome" },
+          "expected": { "anyOf": [{ "$ref": "#/$defs/outcome" }, { "type": "null" }] },
+          "expectation": { "$ref": "#/$defs/expectation" }
+        }
+      }
+    },
+    "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } }
+  },
+  "$defs": {
+    "runId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,80}$" },
+    "strategy": { "enum": ["naive-dual-write", "transactional-outbox", "outbox-idempotent"] },
+    "outcome": { "enum": ["CONSISTENT", "VIOLATION_OBSERVED", "INCONCLUSIVE", "NOT_APPLICABLE"] },
+    "expectation": { "enum": ["MATCHED", "NOT_MATCHED", "NOT_VERIFIED"] },
+    "instant": { "type": ["string", "null"] },
+    "strings": { "type": "array", "items": { "type": "string" } },
+    "stringMap": { "type": "object", "additionalProperties": { "type": ["string", "null"] } },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "parentRunId", "strategy", "startedAt", "finishedAt", "scenario", "result",
+                   "observation", "fault", "invariants", "measurements", "timeline", "environment"],
+      "properties": {
+        "runId": { "$ref": "#/$defs/runId" },
+        "parentRunId": { "anyOf": [{ "$ref": "#/$defs/runId" }, { "type": "null" }] },
+        "strategy": { "$ref": "#/$defs/strategy" },
+        "startedAt": { "$ref": "#/$defs/instant" },
+        "finishedAt": { "$ref": "#/$defs/instant" },
+        "scenario": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "description", "source", "workload", "fault", "recovery", "assertions"],
+          "properties": {
+            "id": { "type": "string" },
+            "description": { "type": "string" },
+            "source": { "type": "string" },
+            "workload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["seed", "orders", "quantityPerOrder", "initialStock", "rollbackEvery", "consumerWorkers"],
+              "properties": {
+                "seed": { "type": "integer" },
+                "orders": { "type": "integer", "minimum": 1 },
+                "quantityPerOrder": { "type": "integer", "minimum": 1 },
+                "initialStock": { "type": "integer", "minimum": 0 },
+                "rollbackEvery": { "type": "integer", "minimum": 0 },
+                "consumerWorkers": { "type": "integer", "minimum": 1 }
+              }
+            },
+            "fault": { "type": "string" },
+            "recovery": { "type": "string" },
+            "assertions": { "$ref": "#/$defs/strings" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome", "reasons", "expected", "expectation", "obstacles"],
+          "properties": {
+            "outcome": { "$ref": "#/$defs/outcome" },
+            "reasons": { "$ref": "#/$defs/strings" },
+            "expected": { "anyOf": [{ "$ref": "#/$defs/outcome" }, { "type": "null" }] },
+            "expectation": { "$ref": "#/$defs/expectation" },
+            "obstacles": { "$ref": "#/$defs/strings" }
+          }
+        },
+        "observation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["timeoutSeconds", "observedMillis", "endReason"],
+          "properties": {
+            "timeoutSeconds": { "type": "integer" },
+            "observedMillis": { "type": "integer", "minimum": 0 },
+            "endReason": { "enum": ["settled", "timeout", "skipped"] }
+          }
+        },
+        "fault": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "description", "target", "checkpoint", "checkpointReachedAt", "checkpointContext",
+                       "appliedAt", "verification", "recovery", "recoveredAt", "problem"],
+          "properties": {
+            "status": { "enum": ["NOT_REQUIRED", "APPLIED", "CHECKPOINT_NOT_REACHED", "NOT_VERIFIED",
+                                 "RECOVERY_FAILED", "NOT_APPLICABLE"] },
+            "description": { "type": ["string", "null"] },
+            "target": { "type": ["string", "null"] },
+            "checkpoint": { "type": ["string", "null"] },
+            "checkpointReachedAt": { "$ref": "#/$defs/instant" },
+            "checkpointContext": { "$ref": "#/$defs/stringMap" },
+            "appliedAt": { "$ref": "#/$defs/instant" },
+            "verification": { "type": ["string", "null"] },
+            "recovery": { "type": ["string", "null"] },
+            "recoveredAt": { "$ref": "#/$defs/instant" },
+            "problem": { "type": ["string", "null"] }
+          }
+        },
+        "invariants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "description", "status", "expected", "actual", "explanation", "evidence"],
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "status": { "enum": ["PASS", "FAIL", "INCONCLUSIVE", "NOT_APPLICABLE"] },
+              "expected": { "type": "string" },
+              "actual": { "type": "string" },
+              "explanation": { "type": "string" },
+              "evidence": { "type": "object", "additionalProperties": { "$ref": "#/$defs/strings" } }
+            }
+          }
+        },
+        "measurements": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["plannedOrders", "committedOrders", "uncommittedOrders", "publishAttempts",
+                           "confirmedPublishes", "brokerPublished", "brokerDeliveries", "brokerRedeliveries",
+                           "consumerAttempts", "consumerRedeliveries", "businessEffects", "eventsWithEffect",
+                           "duplicateEffects", "committedOrdersWithoutEffect", "outboxPending", "outboxParked",
+                           "queueReady", "queueUnacknowledged", "deadLettered", "initialStock", "expectedStock",
+                           "finalStock"],
+              "description": "-1 means not measured or not applicable to the strategy",
+              "properties": {
+                "plannedOrders": { "type": "integer" },
+                "committedOrders": { "type": "integer" },
+                "uncommittedOrders": { "type": "integer" },
+                "publishAttempts": { "type": "integer" },
+                "confirmedPublishes": { "type": "integer" },
+                "brokerPublished": { "type": "integer" },
+                "brokerDeliveries": { "type": "integer" },
+                "brokerRedeliveries": { "type": "integer" },
+                "consumerAttempts": { "type": "integer" },
+                "consumerRedeliveries": { "type": "integer" },
+                "businessEffects": { "type": "integer" },
+                "eventsWithEffect": { "type": "integer" },
+                "duplicateEffects": { "type": "integer" },
+                "committedOrdersWithoutEffect": { "type": "integer" },
+                "outboxPending": { "type": "integer" },
+                "outboxParked": { "type": "integer" },
+                "queueReady": { "type": "integer" },
+                "queueUnacknowledged": { "type": "integer" },
+                "deadLettered": { "type": "integer" },
+                "initialStock": { "type": "integer" },
+                "expectedStock": { "type": "integer" },
+                "finalStock": { "type": "integer" }
+              }
+            }
+          ]
+        },
+        "timeline": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["at", "offsetMillis", "source", "kind", "message", "attributes"],
+            "properties": {
+              "at": { "$ref": "#/$defs/instant" },
+              "offsetMillis": { "type": "integer" },
+              "source": { "type": "string" },
+              "kind": { "type": "string" },
+              "message": { "type": "string" },
+              "attributes": { "$ref": "#/$defs/stringMap" }
+            }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cliVersion", "reportSchemaVersion", "javaVersion", "os", "dockerServerVersion",
+                       "resourceNamespace", "images", "imageIds", "demoArtifactSha256", "components", "resources",
+                       "credentials"],
+          "properties": {
+            "cliVersion": { "type": "string" },
+            "reportSchemaVersion": { "const": 1 },
+            "javaVersion": { "type": "string" },
+            "os": { "type": "string" },
+            "dockerServerVersion": { "type": "string" },
+            "resourceNamespace": { "type": "string" },
+            "images": { "$ref": "#/$defs/stringMap" },
+            "imageIds": { "$ref": "#/$defs/stringMap" },
+            "demoArtifactSha256": { "type": "string" },
+            "components": { "$ref": "#/$defs/stringMap" },
+            "resources": { "$ref": "#/$defs/strings" },
+            "credentials": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

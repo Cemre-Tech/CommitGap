@@ -114,4 +114,35 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- ./mvnw -Pdist -DskipTests package  ->  commitgap-cli/target/commitgap-<version>-dist.zip -->
+    <profile>
+      <id>dist</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>dist</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>single</goal>
+                </goals>
+                <configuration>
+                  <finalName>commitgap-${project.version}</finalName>
+                  <appendAssemblyId>true</appendAssemblyId>
+                  <descriptors>
+                    <descriptor>src/assembly/dist.xml</descriptor>
+                  </descriptors>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
