@@ -119,6 +119,7 @@ public final class LabRunner {
         Lab lab = new Lab(runId, parentRunId, strategy, scenario.workload(), settings.demoJar(),
                 settings.startupTimeout(), !killProducerWithRelay);
         ACTIVE.put(lab, settings.keep() != RuntimeSettings.KeepPolicy.NEVER);
+        timeline.redactWith(lab::redact);
         FaultExecution faultExecution = fault == null ? FaultExecution.notRequired() : null;
         RunResult.ObservationSummary observation = new RunResult.ObservationSummary(
                 scenario.observation().timeoutSeconds(), 0, "skipped");
@@ -180,7 +181,7 @@ public final class LabRunner {
                 faultExecution = verifyDuplicate(fault, snapshot);
             }
         } catch (Exception e) {
-            obstacles.add((labStarted ? "lab error: " : "environment could not be prepared: ") + Lab.rootMessage(e));
+            obstacles.add(lab.redact((labStarted ? "lab error: " : "environment could not be prepared: ") + Lab.rootMessage(e)));
             timeline.runner("lab-error", Lab.rootMessage(e));
         } finally {
             if (supervisor != null && !supervisor.isDone()) {
@@ -192,6 +193,9 @@ public final class LabRunner {
                     : new FaultExecution(FaultExecution.Status.NOT_VERIFIED, fault.describe(), fault.target().id(),
                     null, null, Map.of(), null, null, null, null, "run ended before the fault was verified");
         }
+
+        faultExecution = redacted(faultExecution, lab);
+        obstacles.replaceAll(lab::redact);
 
         List<InvariantResult> invariants = List.of();
         Measurements measurements = null;
@@ -227,6 +231,12 @@ public final class LabRunner {
                 Instant.now(), observation, classification.outcome(), classification.reasons(), expected, expectation,
                 invariants, measurements, faultExecution, timeline.merged(processEvents), environment,
                 List.copyOf(obstacles));
+    }
+
+    private static FaultExecution redacted(FaultExecution f, Lab lab) {
+        return new FaultExecution(f.status(), f.description(), f.target(), f.checkpoint(), f.checkpointReachedAt(),
+                f.checkpointContext(), f.appliedAt(), lab.redact(f.verification()), f.recovery(), f.recoveredAt(),
+                lab.redact(f.problem()));
     }
 
     private static FaultExecution verifyDuplicate(Fault fault, LabSnapshot snapshot) {

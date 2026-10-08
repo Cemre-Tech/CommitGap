@@ -136,10 +136,37 @@ public final class Lab implements AutoCloseable {
             Startables.deepStart(apps).get(startupTimeout.toSeconds() + 30, TimeUnit.SECONDS);
         } catch (Exception e) {
             started.addAll(apps);
-            throw new LabException("demo processes did not start: " + rootMessage(e), e);
+            // Testcontainers' own message embeds the container environment (credentials), so describe states instead.
+            throw new LabException("demo processes did not start: " + describeStates(apps));
         }
         started.addAll(apps);
         processes.values().forEach(DemoProcess::refreshPort);
+    }
+
+    private String describeStates(List<GenericContainer<?>> containers) {
+        List<String> states = new ArrayList<>();
+        for (GenericContainer<?> c : containers) {
+            String role = c.getLabels().getOrDefault(Labels.COMPONENT, "container");
+            String id = c.getContainerId();
+            if (id == null) {
+                states.add(role + " was not created");
+                continue;
+            }
+            try {
+                var state = DockerClientFactory.instance().client().inspectContainerCmd(id).exec().getState();
+                states.add(Boolean.TRUE.equals(state.getRunning())
+                        ? role + " running but not healthy within " + startupTimeout.toSeconds() + "s"
+                        : role + " exited with code " + state.getExitCodeLong());
+            } catch (RuntimeException e) {
+                states.add(role + " state unknown");
+            }
+        }
+        return String.join("; ", states) + " (container logs are in the run directory)";
+    }
+
+    /** Removes this run's credentials (and anything that looks like one) from text bound for reports. */
+    public String redact(String text) {
+        return Redaction.redact(text, List.of(dbPassword, brokerPassword));
     }
 
     private void infrastructure(GenericContainer<?> container, String alias) {
@@ -256,9 +283,10 @@ public final class Lab implements AutoCloseable {
             if (id == null) {
                 continue;
             }
-            String name = c.getContainerName() == null ? id : c.getContainerName().replaceFirst("^/", "");
-            Path file = logDirectory.resolve(name + ".log");
             try {
+                String name = DockerClientFactory.instance().client().inspectContainerCmd(id).exec().getName()
+                        .replaceFirst("^/", "");
+                Path file = logDirectory.resolve(name + ".log");
                 Files.createDirectories(logDirectory);
                 try (BufferedWriter out = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
                     DockerClientFactory.instance().client().logContainerCmd(id)

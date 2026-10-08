@@ -21,6 +21,7 @@ public final class Timeline {
 
     private final List<TimelineEvent> events = new ArrayList<>();
     private final BufferedWriter writer;
+    private volatile java.util.function.UnaryOperator<String> redactor = java.util.function.UnaryOperator.identity();
 
     public Timeline(Path file) {
         try {
@@ -32,7 +33,16 @@ public final class Timeline {
         }
     }
 
-    public synchronized TimelineEvent record(TimelineEvent event) {
+    /** Applied to every message and attribute before it is kept or written. */
+    public void redactWith(java.util.function.UnaryOperator<String> redactor) {
+        this.redactor = redactor;
+    }
+
+    public synchronized TimelineEvent record(TimelineEvent original) {
+        java.util.Map<String, String> attributes = new java.util.LinkedHashMap<>();
+        original.attributes().forEach((k, v) -> attributes.put(k, redactor.apply(v)));
+        TimelineEvent event = new TimelineEvent(original.at(), original.source(), original.kind(),
+                redactor.apply(original.message()), attributes);
         events.add(event);
         try {
             writer.write(Json.COMPACT.writeValueAsString(event));
