@@ -4,7 +4,7 @@
 
 A local fault-injection lab for dual writes, transactional outbox, and idempotent consumers.
 
-*An open-source project by [COMPANY_NAME].* · [Türkçe](README.tr.md)
+*An open-source project by Cemre Tech.* · [Türkçe](README.tr.md)
 
 ---
 
