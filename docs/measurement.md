@@ -13,14 +13,26 @@ at the end of the observation window:
 | consumer | `stock_movement` | the business-effect ledger: one row per applied event (deliberately not unique) |
 | consumer | `processed_message` | deduplication records of the idempotent consumer |
 
-Two more tables are *explanatory* and are written on autocommit statements outside any business
-transaction: `publish_log` (every publish attempt and its broker result) and `delivery_log` (every
+Two more tables are *explanatory* and are written outside any business transaction:
+`publish_log` (recorded publish attempts and their broker results, in an independent transaction)
+and `delivery_log` (every
 delivery the consumer received, with its outcome or none if the process died). They feed the timeline
 and the counters; they never decide whether an invariant holds. A log line is not proof of an effect.
+
+A process killed after the actual broker confirm but before recording its publish result leaves no
+publish log for that first attempt. `publisher-confirm-gap` records the actual confirm at the runner's
+checkpoint and checks the event's deliveries and business effects after restart. Publish counters
+therefore describe recorded attempts, not every message the broker accepted.
 
 Queue depth comes from `rabbitmqctl list_queues` in the broker container (current state). The
 management API's `message_stats` (published, delivered, redelivered) are sampled statistics; they are
 shown as broker counters when present and as "not measured" otherwise.
+
+Each database is captured in a read-only `REPEATABLE READ` transaction. Concurrent commits between
+the stock, movement and deduplication queries cannot mix different versions of that database. A
+regression test blocks the first query with a PostgreSQL advisory lock, commits a writer's stock
+change and ledger entry, and verifies the captured snapshot remains internally consistent. Producer,
+consumer and broker observations remain separate; no distributed atomic snapshot is claimed.
 
 ## Invariants
 
@@ -86,7 +98,13 @@ its outcome stays `VIOLATION_OBSERVED`; the report never turns a violation into 
   that these checks held for this workload, this fault and this observation window.
 - The seed does not make timing reproducible. Faults are bound to checkpoints, not to timing, so
   the measured outcome should not depend on timing; the integration tests check that it does not.
-- Version 1 runs a single relay; claims, leases and multi-relay crash recovery are not covered.
+- One relay process can run 1–8 workers using transaction-held row locks. Independent relay processes,
+  leases and global ordering with several workers are not covered. A lock-owner process crash and
+  rollback/recovery are covered by `relay-lock-crash`.
 - A network cut is applied while no publish is in flight. A cut that loses a confirm in flight is a
-  different, ambiguous case and is not part of version 1.
-- Only the bundled demo application can be tested.
+  different case covered separately by `confirm-loss`: the publisher's connection is warmed, only
+  downstream traffic is dropped, and actual consumer receipt plus a publisher `TIMEOUT` is verified.
+  It uses one relay worker and holds its real timeout checkpoint until responses are restored.
+- The Docker CLI drives the bundled demo. The separate Java adapter SDK evaluates application-owned
+  snapshots only when workload coverage and quiescence are declared and checked. Read failures,
+  missing planned orders and unquiesced writers are inconclusive. See [external applications](external-applications.md).

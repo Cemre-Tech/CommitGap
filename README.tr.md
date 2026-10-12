@@ -5,7 +5,7 @@
 Dual write, transactional outbox ve idempotent consumer davranışlarını yerelde, kontrollü hatalarla
 ölçen bir laboratuvar.
 
-*An open-source project by [COMPANY_NAME].* · [English](README.md)
+*Cemre Tech'in açık kaynak projesi.* · [English](README.md)
 
 ---
 
@@ -56,6 +56,7 @@ etiketleri sabittir; `latest`, snapshot ya da dinamik sürüm kullanılmaz (enfo
 **Modüller.** `commitgap-core` (senaryo modeli, invariant'lar, sonuç tipleri; Spring/Docker yok),
 `commitgap-runtime` (ortam, checkpoint koordinasyonu, hata uygulama, gözlem, temizlik),
 `commitgap-demo` (producer/relay/consumer), `commitgap-report` (JSON + HTML), `commitgap-cli`.
+`commitgap-adapter` ise harici Java uygulamaları için Spring ve Docker bağımlılığı olmayan SDK'dır.
 
 **Süreç izolasyonu ve gerçek crash.** Producer, relay ve consumer ayrı container'lardır. Crash,
 Docker API üzerinden SIGKILL'dir ve `docker inspect` ile container'ın durduğu ve 137 çıkış koduyla
@@ -71,7 +72,10 @@ yayın yapamaz.
 **Kanıt veritabanıdır.** Invariant'lar yalnızca producer ve consumer veritabanlarının gözlem sonu
 snapshot'larından, event ve sipariş kimlik kümeleri üzerinden hesaplanır. Bir eksik event ile bir
 fazla event satır sayısında birbirini gizleyebilir; kimlik kontrolleri ikisini de yakalar. Publish
-ve delivery logları iş transaction'ının dışında, autocommit ile yazılır ve yalnızca açıklama içindir.
+ve delivery logları iş transaction'ının dışında yazılır ve yalnızca açıklama içindir. Relay'in
+transaction'ı rollback olsa bile publish kaydı bağımsız transaction ile korunur. Her veritabanının
+stok, hareket ve dedup okumaları aynı read-only repeatable-read transaction'da yapılır; iki
+veritabanı ve broker arasında atomik, dağıtık snapshot garantisi verilmez.
 
 **Sonuç ile beklenti ayrıdır.** `CONSISTENT`, `VIOLATION_OBSERVED`, `INCONCLUSIVE`, `NOT_APPLICABLE`
 verinin durumunu; *matched / not matched / not verified* gösterimin senaryo tahminine uyup uymadığını
@@ -109,14 +113,38 @@ Kod, hiçbir gerçek kuruluşa ait olmayan `com.example.commitgap` ile derlenir;
 `[COMPANY_NAME]`, `[GITHUB_ORG]`, `[SECURITY_CONTACT]`, `[CONDUCT_CONTACT]`, `[MAVEN_NAMESPACE]`
 yer tutucuları yayın öncesi doldurulmalıdır ([docs/release.md](docs/release.md)).
 
+## Yeni deneyler ve harici uygulama örneği
+
+Mevcut altı senaryoya beş deney eklendi:
+
+- `publisher-confirm-gap`: broker'ın gerçek olumlu confirm'i sonrasında, publisher sonucu kalıcı
+  kayda geçiremeden relay çöker. İlk teslim gerçekleşebilir; ilk publish logu bulunmayabilir.
+- `confirm-loss`: ısınmış bağlantıda yalnızca broker'dan publisher'a dönüş trafiği düşürülür.
+  Consumer'ın mesajı aldığı ve publisher'ın gerçek TIMEOUT kaydı birlikte doğrulanır; outbox tekrar
+  gönderirken idempotent consumer çift iş etkisini önler.
+- `consumer-transaction-crash`: stok ve dedup yazıları yapılır, commit öncesi consumer öldürülür.
+  Transaction rollback olur; tekrar teslimde iş etkisi bir kez uygulanır.
+- `competing-relays`: aynı relay sürecinde üç worker, satır kilitleriyle pending kayıtlar için yarışır.
+- `relay-lock-crash`: relay satır kilidini aldıktan sonra, publish öncesi öldürülür; restart kilidi
+  bırakılmış pending kaydı yeniden işler.
+
+HTML raporundaki event hikâyesi checkpoint, hata, recovery ve kimlik bazlı bulguları birlikte
+gösterir. [Rapor okuma rehberi](docs/reports.md).
+
+[Bağımsız Spring/JDBC örneği](examples/external-spring/README.md), uygulamanın kendi H2 veritabanında
+gerçek transaction'larla kayıp, çift etki ve güvenli tekrar teslimi ölçer. Örnekteki yerel kuyruk
+modeli ve kontrollü exception, RabbitMQ veya SIGKILL iddiası taşımaz. SDK'nın snapshot eşleştirme ve
+checkpoint sözleşmesi [harici uygulama rehberinde](docs/external-applications.md) açıklanmıştır.
+
 ## Sınırlamalar
 
-- Yalnızca paketle gelen demo uygulaması test edilebilir; harici bir backend'i bağlantı bilgisiyle
-  otomatik analiz etme iddiası yoktur. Bunun için checkpoint, veri eşleştirme ve gözlem adapter'ları
-  gerekir.
+- Docker CLI paketle gelen demo uygulamasını sürer. Java SDK harici uygulamanın kendi adapter'ıyla
+  sunulan, çalıştırmaya ait snapshot'ları değerlendirir; workload, aktif yazıcıların durdurulması ve
+  recovery uygulamanın sorumluluğudur. Rastgele bir backend bağlantı bilgisiyle otomatik analiz edilmez.
 - Bir çalıştırmada kontrollerin sağlanması, tüm arızalara karşı dağıtık exactly-once garantisi değildir.
 - Seed, kimlikleri ve iş yükünü tekrarlanabilir kılar; duvar saati ve zamanlamayı değil.
-- Tek relay desteklenir; çoklu relay için claim/lease kapsam dışıdır.
+- Tek relay sürecinde 1–8 worker desteklenir (`workload.relayWorkers`, varsayılan 1). Bağımsız relay
+  süreçleri ve lease tabanlı failover kapsam dışıdır; birden fazla worker küresel sıralamayı korumaz.
 - Yayınlanmış bir Maven/npm/Docker paketi veya GitHub release'i yoktur.
 
 ## Belgeler

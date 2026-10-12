@@ -19,6 +19,7 @@ public record DemoProperties(
         int consumerPrefetch,
         int initialStock,
         boolean relayGateOpen,
+        int relayWorkers,
         long relayPollMillis,
         int relayMaxAttempts,
         long confirmTimeoutMillis,

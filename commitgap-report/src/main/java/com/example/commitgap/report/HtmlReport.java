@@ -44,9 +44,10 @@ public final class HtmlReport {
         }
 
         h.append("<footer><p>Business results come only from the producer and consumer database snapshots taken at ")
-                .append("the end of each observation window. Logs and the timeline explain them; they are not evidence. ")
+                .append("the end of each observation window. Publish and delivery logs describe attempts; timeline business-effect ")
+                .append("entries come from stock movements. Runner checkpoints and actions explain the experiment. ")
                 .append("Checks that held in one run are not a general exactly-once guarantee for every failure.</p>")
-                .append("<p>An open-source project by [COMPANY_NAME].</p></footer>\n");
+                .append("<p>An open-source project by Cemre Tech.</p></footer>\n");
         h.append("</main>\n</body>\n</html>\n");
         return h.toString();
     }
@@ -153,6 +154,7 @@ public final class HtmlReport {
             h.append("</ul></div>\n");
         }
 
+        EventStory.render(h, run);
         renderFault(h, run.path("fault"));
         renderInvariants(h, run.path("invariants"));
         renderMeasurements(h, run.path("measurements"));
@@ -303,7 +305,8 @@ public final class HtmlReport {
         return w.path("orders").asInt() + " orders × " + w.path("quantityPerOrder").asInt() + ", initial stock "
                 + w.path("initialStock").asInt() + ", seed " + w.path("seed").asLong()
                 + (w.path("rollbackEvery").asInt() > 0 ? ", every " + w.path("rollbackEvery").asInt() + "th order rolled back" : "")
-                + ", " + w.path("consumerWorkers").asInt() + " consumer worker(s)";
+                + ", " + w.path("consumerWorkers").asInt() + " consumer worker(s)"
+                + ", " + w.path("relayWorkers").asInt(1) + " relay worker(s)";
     }
 
     private static String fact(String term, String html) {
@@ -405,6 +408,15 @@ public final class HtmlReport {
             .desc{font-weight:400;font-size:12px;color:var(--muted);margin-top:4px;max-width:280px}
             dl.evidence{margin:6px 0 0;font-size:13px}dl.evidence dt{color:var(--muted)}dl.evidence dd{margin:0 0 4px}
             tr.key td{font-weight:600}
+            .event-story{border-left:3px solid var(--accent);padding:0 0 0 16px;margin:24px 0}
+            .event-story>p,.story-mechanism{max-width:80ch}
+            .event-story h4{font-size:14px;margin:16px 0 6px}
+            .story-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px 24px;padding-left:24px}
+            .story-steps li::marker{color:var(--accent);font-weight:700}
+            .story-steps p{margin:4px 0;font-size:13px}
+            .story-records,.story-findings{padding-left:20px}
+            .story-records li,.story-findings li{margin:8px 0;overflow-wrap:anywhere}
+            a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
             table.timeline td:nth-child(2),table.timeline td:nth-child(3){white-space:nowrap}
             footer{margin-top:40px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:12px}
             """;

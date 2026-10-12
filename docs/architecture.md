@@ -12,6 +12,7 @@ points, and comparing the producer and consumer databases afterwards.
 | Module | Responsibility | Depends on |
 |---|---|---|
 | `commitgap-core` | Scenario model and strict YAML loader, deterministic workload plan, snapshot model, invariants, outcome classification, result types. No Spring, no Docker. | SnakeYAML |
+| `commitgap-adapter` | Application-owned observation contract, invariant verifier and bounded cooperative checkpoints for external Java applications. No Spring, no Docker. | core |
 | `commitgap-runtime` | Lab environment per run, checkpoint coordination, fault application (SIGKILL, Toxiproxy), observation, database and broker snapshots, label-based cleanup, run directories. | core, Testcontainers, PostgreSQL JDBC, Jackson |
 | `commitgap-demo` | The system under test: one Spring Boot jar that runs as producer, relay or consumer for each strategy. | core, Spring Boot (JDBC, AMQP, Web MVC, Flyway) |
 | `commitgap-report` | Versioned JSON report and self-contained HTML. | core, Jackson |
@@ -66,11 +67,19 @@ commitgap run --scenario crash-after-commit --strategy outbox-idempotent
 - The producer commits the order (and, for outbox strategies, the outbox row) in one
   `TransactionTemplate` call. Only after that call returns does it report
   `producer.after-db-commit-before-publish`.
-- The relay reads pending outbox rows in commit order, publishes each, waits for the publisher
+- Each relay worker locks one pending outbox row with `FOR UPDATE SKIP LOCKED` in a transaction,
+  publishes it, waits for the publisher
   confirm, checks that the mandatory message was not returned, reports
-  `relay.after-publisher-confirm-before-outbox-mark`, then marks the row `SENT`.
+  `relay.after-publisher-confirm-before-outbox-mark`, then marks the row `SENT` and commits. A crash
+  releases the row lock through rollback. Multiple workers can publish different rows concurrently;
+  only the single-worker configuration preserves the row selection order.
+- The publisher records confirmed attempts in an independent transaction. The
+  `relay.after-broker-confirm-before-publish-result` checkpoint fires after a real routable broker
+  confirm but before recording that attempt or returning it to the relay.
 - The consumer acknowledges manually. The stock change, the movement row and (idempotent strategy)
-  the `processed_message` row commit in one transaction; then it reports
+  the `processed_message` row commit in one transaction. The
+  `consumer.after-business-write-before-commit` checkpoint fires inside this transaction, after
+  the writes; SIGKILL rolls them all back. After commit the consumer reports
   `consumer.after-business-commit-before-ack` and acknowledges.
 - Producer and consumer data live in separate databases. The consumer's business tables and its
   deduplication table share the consumer database so they can share a transaction.
@@ -94,6 +103,11 @@ disables the proxy (closing connections and refusing new ones) when no publish i
 disabled until a failed publish attempt proves the outage reached the publisher, records the outbox
 backlog at that moment, and re-enables it.
 
+`confirm-loss` keeps the proxy enabled and drops broker-to-publisher bytes on a warmed connection.
+The runtime verifies receipt by the directly connected consumer and an actual publisher timeout for
+the same event. An outbox retry is held at its timeout checkpoint until the toxic is removed;
+the naive producer has no automatic retry. This distinguishes missing confirmation from missing delivery.
+
 ## Run directory
 
 ```
@@ -108,7 +122,14 @@ backlog at that moment, and re-enables it.
 
 ## Extending to another application
 
-Version 1 only drives its own demo. Testing an external application would need, at minimum: a way
-for that application to announce checkpoints and wait (the control API contract), a mapping from its
-data to order/event identities for the invariants, and access to its broker topology. CommitGap does
-not inspect arbitrary backends from a connection string, and the documentation does not claim it can.
+The Docker CLI drives its own demo. `commitgap-adapter` provides a separate Java integration contract:
+an application implements `ExternalApplicationAdapter.capture`, returns a run-scoped `ExternalObservation`,
+and uses `ExternalApplicationVerifier` to evaluate the existing order/stock invariants. It can signal
+precise boundaries through a bounded in-process checkpoint gate. Workload driving, stopping writers
+and recovery belong to the application. Cooperative abortion is not a process crash.
+
+The [standalone Spring application](../examples/external-spring/README.md) runs real JDBC transactions
+in its own ephemeral H2 database and demonstrates loss, duplicate effects and idempotent redelivery.
+Its local transport model makes no RabbitMQ or network-durability claim. See
+[the integration contract](external-applications.md). Arbitrary connection-string inspection and
+external Docker fault orchestration are not provided.

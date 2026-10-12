@@ -95,6 +95,7 @@ public final class ReportJson {
         workload.put("initialStock", w.initialStock());
         workload.put("rollbackEvery", w.rollbackEvery());
         workload.put("consumerWorkers", w.consumerWorkers());
+        workload.put("relayWorkers", w.relayWorkers());
         scenario.put("fault", r.scenario().fault());
         scenario.put("recovery", r.scenario().recovery());
         scenario.set("assertions", strings(r.scenario().assertions()));

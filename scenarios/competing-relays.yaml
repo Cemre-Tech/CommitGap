@@ -1,0 +1,24 @@
+# Three worker threads in one relay process compete for pending outbox rows.
+schemaVersion: 1
+id: competing-relays
+description: Three concurrent relay workers publish from the same outbox using transaction-scoped row locks.
+workload:
+  seed: 42
+  orders: 20
+  quantityPerOrder: 1
+  initialStock: 100
+  rollbackEvery: 7
+  relayWorkers: 3
+observation:
+  timeoutSeconds: 30
+assertions:
+  - committed-order-has-business-effect
+  - stock-changed-once-per-event
+  - rolled-back-order-has-no-effect
+  - stock-matches-committed-orders
+  - dedup-record-matches-business-effect
+  - no-pending-work-after-recovery
+expectedByStrategy:
+  naive-dual-write: CONSISTENT
+  transactional-outbox: CONSISTENT
+  outbox-idempotent: CONSISTENT

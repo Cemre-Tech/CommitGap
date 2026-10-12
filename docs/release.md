@@ -64,14 +64,18 @@ Replace the placeholders, which are deliberately not filled in:
 
 | Placeholder | Where |
 |---|---|
-| `[COMPANY_NAME]` | `LICENSE`, README files, HTML report footer (`HtmlReport`) |
-| `[GITHUB_ORG]` | README files, CONTRIBUTING.md |
+| `[COMPANY_NAME]` | copyright holder in `LICENSE` |
 | `[SECURITY_CONTACT]` | SECURITY.md |
 | `[CONDUCT_CONTACT]` | CODE_OF_CONDUCT.md |
 | `[MAVEN_NAMESPACE]` | `groupId` and Java packages, currently the temporary `com.example.commitgap` |
 
 `com.example` is reserved for examples and owned by no one, which is why it is used as the temporary
 namespace. Renaming it means changing the `groupId` in every `pom.xml` and moving the packages.
+
+The optional adapter SDK is a separate plain jar. Install it and its reactor dependencies with
+`./mvnw -pl commitgap-adapter -am install` before building the standalone Spring example with
+`./mvnw -f examples/external-spring/pom.xml verify`. The CLI release zip does not bundle that
+example's H2 runtime or change the application's ownership of workload driving and recovery.
 
 Then: set the version (drop `-SNAPSHOT`) in the POMs, update `CHANGELOG.md`, run `./mvnw -Pit verify`
 and `./commitgap demo` on Linux, build the zip, and attach it to a tagged release.

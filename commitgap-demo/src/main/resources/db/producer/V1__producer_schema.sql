@@ -26,7 +26,7 @@ CREATE TABLE outbox (
 
 CREATE INDEX outbox_pending_idx ON outbox (seq) WHERE status = 'PENDING';
 
--- Observation log, written on its own autocommit connection outside any business transaction.
+-- Observation log, written in an independent transaction outside any business transaction.
 -- Explains what happened; never used as evidence of a business effect.
 CREATE TABLE publish_log (
     id        bigserial   PRIMARY KEY,

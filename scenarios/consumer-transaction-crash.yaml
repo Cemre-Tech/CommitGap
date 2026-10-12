@@ -1,0 +1,29 @@
+schemaVersion: 1
+id: consumer-transaction-crash
+description: Kill the consumer after its business writes, while the database transaction remains uncommitted.
+workload:
+  seed: 42
+  orders: 20
+  quantityPerOrder: 1
+  initialStock: 100
+  rollbackEvery: 7
+fault:
+  target: consumer
+  checkpoint: consumer.after-business-write-before-commit
+  action: kill
+  occurrence: 5
+recovery:
+  action: restart
+observation:
+  timeoutSeconds: 30
+assertions:
+  - committed-order-has-business-effect
+  - stock-changed-once-per-event
+  - rolled-back-order-has-no-effect
+  - stock-matches-committed-orders
+  - dedup-record-matches-business-effect
+  - no-pending-work-after-recovery
+expectedByStrategy:
+  naive-dual-write: CONSISTENT
+  transactional-outbox: CONSISTENT
+  outbox-idempotent: CONSISTENT

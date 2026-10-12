@@ -44,6 +44,11 @@ public final class ControlClient {
         return get("/control/checkpoints", Duration.ofSeconds(2)).body();
     }
 
+    public void releaseCheckpoint(Checkpoint checkpoint) {
+        expectOk(post("/control/checkpoints/release", Map.of("checkpoint", checkpoint.id())),
+                "release " + checkpoint.id());
+    }
+
     public void armDuplicatePublish(int occurrence, int copies) {
         expectOk(post("/control/faults/duplicate-publish", Map.of("occurrence", occurrence, "copies", copies)),
                 "arm duplicate publish");

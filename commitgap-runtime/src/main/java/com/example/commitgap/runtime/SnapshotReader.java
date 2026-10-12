@@ -22,7 +22,9 @@ import java.util.UUID;
 
 /**
  * Reads the producer and consumer databases of one lab with plain JDBC. These rows are the only
- * evidence used for business correctness.
+ * evidence used for business correctness. Each database is read in its own read-only repeatable-read
+ * transaction: stock, movements and deduplication records cannot come from different commits. This
+ * does not create a distributed snapshot shared with the other database or broker.
  */
 final class SnapshotReader {
 
@@ -49,7 +51,9 @@ final class SnapshotReader {
                     rs -> new OutboxRow(uuid(rs, 1), uuid(rs, 2), rs.getString(3), rs.getInt(4), instant(rs, 5), instant(rs, 6)));
             List<PublishAttempt> attempts = query(c, "SELECT event_id, publisher, result, detail, at FROM publish_log ORDER BY id",
                     rs -> new PublishAttempt(uuid(rs, 1), rs.getString(2), rs.getString(3), rs.getString(4), instant(rs, 5)));
-            return new ProducerSnapshot(orders, outbox, attempts);
+            ProducerSnapshot snapshot = new ProducerSnapshot(orders, outbox, attempts);
+            c.commit();
+            return snapshot;
         }
     }
 
@@ -65,7 +69,9 @@ final class SnapshotReader {
                     rs -> new ProcessedMessage(rs.getString(1), uuid(rs, 2), instant(rs, 3)));
             List<DeliveryRecord> deliveries = query(c, "SELECT id, event_id, redelivered, worker, outcome, received_at FROM delivery_log ORDER BY id",
                     rs -> new DeliveryRecord(rs.getLong(1), uuid(rs, 2), rs.getBoolean(3), rs.getString(4), rs.getString(5), instant(rs, 6)));
-            return new ConsumerSnapshot(stock.get(0), movements, processed, deliveries);
+            ConsumerSnapshot snapshot = new ConsumerSnapshot(stock.get(0), movements, processed, deliveries);
+            c.commit();
+            return snapshot;
         }
     }
 
@@ -75,31 +81,49 @@ final class SnapshotReader {
         try (Connection c = connect(producer)) {
             pending = count(c, "SELECT count(*) FROM outbox WHERE status = 'PENDING'");
             attempts = count(c, "SELECT count(*) FROM publish_log");
+            c.commit();
         }
         try (Connection c = connect(consumer)) {
-            return new QuickState(pending,
+            QuickState state = new QuickState(pending,
                     count(c, "SELECT count(*) FROM stock_movement"),
                     count(c, "SELECT count(*) FROM delivery_log"),
                     attempts);
+            c.commit();
+            return state;
         }
     }
 
     int failedPublishAttempts() throws SQLException {
         try (Connection c = connect(producer)) {
-            return count(c, "SELECT count(*) FROM publish_log WHERE result <> 'CONFIRMED'");
+            int attempts = count(c, "SELECT count(*) FROM publish_log WHERE result <> 'CONFIRMED'");
+            c.commit();
+            return attempts;
         }
     }
 
     int pendingOutbox() throws SQLException {
         try (Connection c = connect(producer)) {
-            return count(c, "SELECT count(*) FROM outbox WHERE status = 'PENDING'");
+            int pending = count(c, "SELECT count(*) FROM outbox WHERE status = 'PENDING'");
+            c.commit();
+            return pending;
         }
     }
 
     private static Connection connect(Database db) throws SQLException {
         Connection c = DriverManager.getConnection(db.url(), db.user(), db.password());
-        c.setReadOnly(true);
-        return c;
+        try {
+            c.setReadOnly(true);
+            c.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+            c.setAutoCommit(false);
+            return c;
+        } catch (SQLException e) {
+            try {
+                c.close();
+            } catch (SQLException closeFailure) {
+                e.addSuppressed(closeFailure);
+            }
+            throw e;
+        }
     }
 
     private static int count(Connection c, String sql) throws SQLException {

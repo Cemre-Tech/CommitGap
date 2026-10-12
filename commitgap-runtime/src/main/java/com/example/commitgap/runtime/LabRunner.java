@@ -166,7 +166,8 @@ public final class LabRunner {
             if (supervisor != null) {
                 supervisor.stop();
                 faultExecution = supervisor.result();
-            } else if (fault != null && fault.action() == FaultAction.NETWORK_CUT) {
+            } else if (fault != null && (fault.action() == FaultAction.NETWORK_CUT
+                    || fault.action() == FaultAction.CONFIRM_LOSS)) {
                 faultExecution = driver.networkExecution() == null
                         ? new FaultExecution(FaultExecution.Status.NOT_VERIFIED, fault.describe(), fault.target().id(),
                         null, null, Map.of(), null, null, null, null, "workload ended before the cut")

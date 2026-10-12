@@ -39,7 +39,11 @@ final class Fixtures {
 
     /** A naive run in which the producer was killed after committing order 3; its event never had an effect. */
     static RunResult naiveCrash(String description) {
-        Workload workload = new Workload(42, 6, 1, 100, 0, 1);
+        return naiveCrash(description, 1);
+    }
+
+    static RunResult naiveCrash(String description, int relayWorkers) {
+        Workload workload = new Workload(42, 6, 1, 100, 0, 1, relayWorkers);
         WorkloadPlan plan = WorkloadPlan.from(workload);
         List<OrderRow> orders = new ArrayList<>();
         List<StockMovement> movements = new ArrayList<>();

@@ -9,4 +9,4 @@ Short records of the decisions that shape CommitGap.
 - [ADR 0005: Label-scoped cleanup; the Testcontainers reaper is disabled in the CLI](0005-label-scoped-cleanup.md)
 - [ADR 0006: Temporary namespace, Jackson 3, SnakeYAML for scenarios](0006-temporary-namespace-and-libraries.md)
 - [ADR 0007: Quorum queue with a delivery limit; same broker settings for all strategies](0007-quorum-queue-bounded-redelivery.md)
-- [ADR 0008: A single relay without claims or leases](0008-single-relay.md)
+- [ADR 0008: Relay workers with transaction-scoped row locks](0008-single-relay.md)

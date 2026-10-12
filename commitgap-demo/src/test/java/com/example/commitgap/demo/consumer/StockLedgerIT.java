@@ -157,6 +157,32 @@ class StockLedgerIT {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM stock_movement", Integer.class)).isZero();
     }
 
+    @Test
+    void failureAfterAllBusinessWritesRollsBackStockMovementAndDedupTogether() {
+        for (boolean idempotent : List.of(false, true)) {
+            StockLedger ledger = ledger(idempotent);
+            OrderCreatedEvent event = event();
+            int before = stock();
+            assertThatThrownBy(() -> ledger.apply(event, () -> {
+                // These rows are visible inside this transaction, but must vanish with its rollback.
+                assertThat(stock()).isEqualTo(before - 1);
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM stock_movement WHERE event_id = ?",
+                        Integer.class, event.eventId())).isEqualTo(1);
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM processed_message WHERE event_id = ?",
+                        Integer.class, event.eventId())).isEqualTo(idempotent ? 1 : 0);
+                throw new IllegalStateException("failed after business writes, before commit");
+            })).isInstanceOf(IllegalStateException.class);
+
+            assertThat(stock()).isEqualTo(before);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM stock_movement WHERE event_id = ?",
+                    Integer.class, event.eventId())).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM processed_message WHERE event_id = ?",
+                    Integer.class, event.eventId())).isZero();
+            assertThat(ledger.apply(event)).isEqualTo(StockLedger.Outcome.APPLIED);
+            assertThat(stock()).isEqualTo(before - 1);
+        }
+    }
+
     private StockLedger ledger(boolean idempotent) {
         StockLedger ledger = new StockLedger(jdbc, tx, idempotent, "stock-consumer");
         ledger.seedStock(SKU, 100);

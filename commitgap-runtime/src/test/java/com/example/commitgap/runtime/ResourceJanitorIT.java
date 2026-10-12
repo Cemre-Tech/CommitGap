@@ -8,14 +8,23 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.DockerClientFactory;
+import org.testcontainers.images.RemoteDockerImage;
+import org.testcontainers.utility.DockerImageName;
 
 /**
  * Creates labelled resources for two runs plus one unlabelled container, then cleans up one run.
  * Uses a small pinned image already needed by the lab.
  */
 class ResourceJanitorIT {
+
+    @BeforeAll
+    static void resolveProbeImage() {
+        // Raw docker-java createContainerCmd does not pull. Fresh CI runners have no image cache.
+        new RemoteDockerImage(DockerImageName.parse(LabImages.TOXIPROXY)).get();
+    }
 
     private final DockerClient docker = DockerClientFactory.instance().client();
     private final List<String> created = new ArrayList<>();

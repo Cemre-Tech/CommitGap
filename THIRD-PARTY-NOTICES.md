@@ -28,6 +28,12 @@ that contain their dependencies unmodified.
 Test-only dependencies (not distributed): JUnit (EPL-2.0), AssertJ (Apache-2.0), Awaitility
 (Apache-2.0), json-schema-validator by networknt (Apache-2.0).
 
+## Standalone external Spring example
+
+`examples/external-spring` additionally uses H2 Database Engine 2.4.240 (managed by the existing
+Spring Boot BOM; MPL-2.0 / EPL-1.0). It is bundled only if that separate application's executable
+jar is built. H2 is not a dependency of the adapter SDK or the lab CLI.
+
 ## Container images pulled at run time (not redistributed)
 
 The lab pulls these images from their public registries on first use. CommitGap does not ship them.

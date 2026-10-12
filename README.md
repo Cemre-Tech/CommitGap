@@ -38,8 +38,8 @@ included Maven Wrapper.
 ## Quick start
 
 ```bash
-git clone https://github.com/[GITHUB_ORG]/commitgap.git
-cd commitgap
+git clone https://github.com/Cemre-Tech/CommitGap.git
+cd CommitGap
 ./commitgap doctor
 ./commitgap demo
 ```
@@ -47,7 +47,7 @@ cd commitgap
 On Windows use `.\commitgap.ps1 doctor` in PowerShell, or `commitgap.cmd doctor` in `cmd.exe`.
 
 `doctor` checks Java, Docker, the build, the scenario files and the images. `demo` runs every bundled
-scenario against every strategy in real containers (18 cells, each with its own PostgreSQL, RabbitMQ,
+scenario against every strategy (33 cells; applicable cells use real PostgreSQL, RabbitMQ,
 Toxiproxy and demo processes) and prints the measured matrix. It takes several minutes; each cell
 starts a fresh environment.
 
@@ -88,7 +88,8 @@ that shows its predicted violation is *matched* and stays `VIOLATION_OBSERVED`: 
 worked, the data did not stay correct.
 
 A full `./commitgap demo` measured on one development machine (Windows 11, Docker Desktop 29.6.1;
-7 min 49 s for 18 cells, exit code 0):
+7 min 49 s for the original six scenarios / 18 cells, exit code 0; the five newer scenarios below
+are not included in this historical example):
 
 ```text
 scenario            naive-dual-write                  transactional-outbox              outbox-idempotent
@@ -119,6 +120,11 @@ of everything involved. The HTML has no scripts and loads nothing from the netwo
 | `duplicate-delivery` | one event published three times, two consumer workers | VIOLATION | VIOLATION | CONSISTENT |
 | `consumer-ack-gap` | SIGKILL consumer after its commit, before the ack | VIOLATION | VIOLATION | CONSISTENT |
 | `broker-outage` | publisher-to-broker link cut for 5 orders, then restored | VIOLATION | CONSISTENT | CONSISTENT |
+| `publisher-confirm-gap` | SIGKILL relay after the actual broker confirm, before recording its result | not applicable | VIOLATION | CONSISTENT |
+| `confirm-loss` | real broker-to-publisher traffic dropped after warm-up; message accepted but publisher times out | CONSISTENT | VIOLATION | CONSISTENT |
+| `consumer-transaction-crash` | SIGKILL consumer after business writes, before transaction commit | CONSISTENT | CONSISTENT | CONSISTENT |
+| `competing-relays` | three relay workers compete for pending rows | CONSISTENT | CONSISTENT | CONSISTENT |
+| `relay-lock-crash` | SIGKILL relay while it owns a row lock, before publishing | not applicable | CONSISTENT | CONSISTENT |
 
 These are the scenarios' *expectations*. Each run measures the actual outcome and reports any
 mismatch. A scenario file looks like this:
@@ -157,6 +163,13 @@ See [docs/scenarios.md](docs/scenarios.md) for the full format and what each sce
 - **Pending is not lost.** A missing effect with a pending outbox row or queued message at the
   deadline is `INCONCLUSIVE`, not a violation.
 
+Each database is captured in its own read-only repeatable-read transaction. Stock, movement and
+deduplication records share one database snapshot even when a writer commits between the queries.
+This does not create an atomic snapshot shared across both databases and the broker.
+
+The HTML report includes an event story linking the recorded checkpoint, fault, recovery and
+per-event evidence. See [docs/reports.md](docs/reports.md) for how to interpret it.
+
 Details: [docs/measurement.md](docs/measurement.md), [docs/architecture.md](docs/architecture.md),
 [docs/outbox-and-idempotency.md](docs/outbox-and-idempotency.md), [decision records](docs/adr/README.md).
 
@@ -170,12 +183,19 @@ to reports.
 
 ## Limits
 
-- Only the bundled demo application can be tested. Testing another application would need explicit
-  checkpoint, data-mapping and observation adapters; CommitGap does not analyse arbitrary backends.
+- The Docker CLI drives the bundled demo. The optional `commitgap-adapter` Java SDK lets another
+  application map its own run-scoped data to the same invariants and signal cooperative checkpoints.
+  See [the standalone Spring example](examples/external-spring/README.md) and
+  [integration contract](docs/external-applications.md). The application owns workload driving,
+  stopping writers and recovery; the SDK does not analyse arbitrary backends or perform SIGKILL.
 - Checks that hold in one run are not a general exactly-once guarantee for every failure.
 - The seed makes ids and the workload reproducible, not wall-clock timing or scheduling.
-- One relay; multi-relay leasing is not covered. Network cuts are applied while no publish is in
-  flight.
+- One relay process, with 1–8 worker threads (`workload.relayWorkers`, default 1) coordinated by
+  database row locks. Independent relay processes and leases are not covered. Multiple workers do
+  not guarantee global ordering. `broker-outage` cuts the whole publishing link while no publish is
+  in flight. `confirm-loss` drops only downstream responses on a warmed connection and verifies both
+  the real publisher timeout and consumer receipt. `publisher-confirm-gap` separately tests process
+  state loss after a real positive confirm.
 - No Maven, npm or Docker package and no GitHub release has been published. See
   [docs/release.md](docs/release.md) to build and package one.
 

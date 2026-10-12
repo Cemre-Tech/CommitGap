@@ -12,6 +12,7 @@ import java.util.Optional;
  *   <li>{@code kill}: {@code checkpoint}, {@code occurrence} (the n-th time the target reaches the checkpoint)</li>
  *   <li>{@code duplicate-publish}: {@code occurrence} (the n-th published event), {@code copies}</li>
  *   <li>{@code network-cut}: {@code atOrder} (cut before this order is sent), {@code ordersDuringFault}</li>
+ *   <li>{@code confirm-loss}: {@code atOrder} (drop downstream bytes for this committed order)</li>
  * </ul>
  */
 public record Fault(
@@ -30,6 +31,8 @@ public record Fault(
             case DUPLICATE_PUBLISH -> "publish event #" + occurrence + " " + copies + " times with the same event id";
             case NETWORK_CUT -> "cut the publisher-to-broker link before order " + atOrder
                     + " for " + ordersDuringFault + " orders";
+            case CONFIRM_LOSS -> "drop broker-to-publisher bytes for order " + atOrder
+                    + " until broker acceptance and a real confirm timeout are observed";
         };
     }
 }

@@ -1,0 +1,31 @@
+# Broker acceptance is known: the publisher observed a positive routable confirm. Kill before it
+# records or returns the result to the relay. This is process-memory loss, not a lost network packet.
+schemaVersion: 1
+id: publisher-confirm-gap
+description: Kill the relay publisher after broker confirmation, before it records or returns the publish result.
+workload:
+  seed: 42
+  orders: 20
+  quantityPerOrder: 1
+  initialStock: 100
+  rollbackEvery: 7
+fault:
+  target: relay
+  checkpoint: relay.after-broker-confirm-before-publish-result
+  action: kill
+  occurrence: 5
+recovery:
+  action: restart
+observation:
+  timeoutSeconds: 30
+assertions:
+  - committed-order-has-business-effect
+  - stock-changed-once-per-event
+  - rolled-back-order-has-no-effect
+  - stock-matches-committed-orders
+  - dedup-record-matches-business-effect
+  - no-pending-work-after-recovery
+expectedByStrategy:
+  naive-dual-write: NOT_APPLICABLE
+  transactional-outbox: VIOLATION_OBSERVED
+  outbox-idempotent: CONSISTENT

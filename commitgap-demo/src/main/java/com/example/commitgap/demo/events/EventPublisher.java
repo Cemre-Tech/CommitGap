@@ -1,10 +1,13 @@
 package com.example.commitgap.demo.events;
 
+import com.example.commitgap.core.model.Checkpoint;
 import com.example.commitgap.demo.DemoConfiguration;
 import com.example.commitgap.demo.DemoProperties;
 import com.example.commitgap.demo.control.FaultSwitches;
+import com.example.commitgap.demo.control.CheckpointGate;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -18,13 +21,15 @@ import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Publishes OrderCreated events with the same broker settings for every strategy: persistent
  * messages, mandatory routing, publisher confirms. Every attempt is written to {@code publish_log}
- * through {@link JdbcTemplate} outside any transaction (autocommit), so the log never joins or
- * depends on a business transaction.
+ * in an independent transaction, so a relay rollback cannot erase an already recorded broker result.
  */
 @Component
 public class EventPublisher {
@@ -36,14 +41,20 @@ public class EventPublisher {
     private final JsonMapper json;
     private final FaultSwitches faults;
     private final long confirmTimeoutMillis;
+    private final CheckpointGate checkpoints;
+    private final TransactionTemplate logTransaction;
 
     public EventPublisher(RabbitTemplate rabbit, JdbcTemplate jdbc, JsonMapper json, FaultSwitches faults,
-                          DemoProperties properties) {
+                          DemoProperties properties, CheckpointGate checkpoints,
+                          PlatformTransactionManager transactionManager) {
         this.rabbit = rabbit;
         this.jdbc = jdbc;
         this.json = json;
         this.faults = faults;
         this.confirmTimeoutMillis = properties.confirmTimeoutMillis();
+        this.checkpoints = checkpoints;
+        this.logTransaction = new TransactionTemplate(transactionManager);
+        this.logTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     public String toPayload(OrderCreatedEvent event) {
@@ -59,6 +70,11 @@ public class EventPublisher {
         PublishResult result = null;
         for (int copy = 1; copy <= copies; copy++) {
             result = publishOnce(eventId, orderId, payload);
+            if (result.confirmed() && "relay".equals(publisher)) {
+                checkpoints.reach(Checkpoint.RELAY_AFTER_BROKER_CONFIRM_BEFORE_PUBLISH_RESULT,
+                        Map.of("eventId", eventId.toString(), "orderId", orderId.toString(),
+                                "brokerResult", "positive confirm, routable", "publishResult", "not recorded"));
+            }
             String detail = copies > 1 ? "copy " + copy + "/" + copies + (result.detail() == null ? "" : "; " + result.detail())
                     : result.detail();
             logAttempt(eventId, publisher, result.kind().name(), detail);
@@ -101,10 +117,11 @@ public class EventPublisher {
         }
     }
 
-    private void logAttempt(UUID eventId, String publisher, String result, String detail) {
+    void logAttempt(UUID eventId, String publisher, String result, String detail) {
         try {
-            jdbc.update("INSERT INTO publish_log (event_id, publisher, result, detail) VALUES (?, ?, ?, ?)",
-                    eventId, publisher, result, detail);
+            logTransaction.executeWithoutResult(status -> jdbc.update(
+                    "INSERT INTO publish_log (event_id, publisher, result, detail) VALUES (?, ?, ?, ?)",
+                    eventId, publisher, result, detail));
         } catch (RuntimeException e) {
             log.warn("could not write publish_log for {}: {}", eventId, e.getMessage());
         }

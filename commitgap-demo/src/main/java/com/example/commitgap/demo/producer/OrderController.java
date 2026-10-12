@@ -32,7 +32,7 @@ public class OrderController {
         if (!result.committed()) {
             status = HttpStatus.CONFLICT;
         } else if (result.publishResult() != null && !result.published()) {
-            // Committed, but the event did not reach the broker. The naive producer keeps no record of it.
+            // Committed without a positive publish result. A timeout does not establish broker rejection.
             status = HttpStatus.ACCEPTED;
         } else {
             status = HttpStatus.CREATED;

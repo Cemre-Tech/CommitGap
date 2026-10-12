@@ -57,7 +57,9 @@ public class StockConsumer implements ChannelAwareMessageListener {
         Long logId = deliveries.received(event.eventId(), redelivered, deliveryCount, worker);
         StockLedger.Outcome outcome;
         try {
-            outcome = ledger.apply(event);
+            outcome = ledger.apply(event, () -> gate.reach(Checkpoint.CONSUMER_AFTER_BUSINESS_WRITE_BEFORE_COMMIT,
+                    Map.of("eventId", event.eventId().toString(), "orderId", event.orderId().toString(),
+                            "transactionState", "uncommitted")));
         } catch (RuntimeException e) {
             log.warn("processing {} failed, returning it to the queue: {}", event.eventId(), e.getMessage());
             deliveries.finish(logId, "FAILED", e.getMessage());

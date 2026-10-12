@@ -66,7 +66,8 @@ class ScenarioLoaderTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"happy-path", "crash-after-commit", "relay-confirm-gap", "duplicate-delivery",
-            "consumer-ack-gap", "broker-outage"})
+            "consumer-ack-gap", "broker-outage", "publisher-confirm-gap", "consumer-transaction-crash",
+            "competing-relays", "relay-lock-crash", "confirm-loss"})
     void bundledScenariosAreValid(String id) {
         ScenarioCatalog catalog = new ScenarioCatalog(Path.of(System.getProperty("commitgap.scenarios.dir")), loader);
 
@@ -91,6 +92,16 @@ class ScenarioLoaderTest {
         String yaml = VALID.replace("  orders: 20\n", "  orders: 20\n  orders: 30\n");
 
         assertProblems(yaml, "YAML error", "duplicate key orders");
+    }
+
+    @Test
+    void relayWorkerCountIsOptionalAndBounded() {
+        assertThat(loader.parse(VALID, "test.yaml").workload().relayWorkers()).isEqualTo(1);
+        String parallel = VALID.replace("  orders: 20\n", "  orders: 20\n  relayWorkers: 3\n");
+        assertThat(loader.parse(parallel, "test.yaml").workload().relayWorkers()).isEqualTo(3);
+        assertProblems(parallel.replace("relayWorkers: 3", "relayWorkers: 9"), "workload.relayWorkers");
+        assertProblems(parallel.replace("relayWorkers: 3", "relayWorkers: 0"), "workload.relayWorkers");
+        assertProblems(parallel.replace("relayWorkers: 3", "relayWorkers: \"3\""), "workload.relayWorkers");
     }
 
     @Test
@@ -231,6 +242,39 @@ class ScenarioLoaderTest {
                 """);
 
         assertProblems(yaml, "needs 'restore-network'", "exceeds workload.orders");
+    }
+
+    @Test
+    void confirmLossNeedsAWarmSinglePublisherAndACommittedOrder() {
+        String yaml = VALID.replace("""
+                fault:
+                  target: producer
+                  checkpoint: producer.after-db-commit-before-publish
+                  action: kill
+                recovery:
+                  action: restart
+                """, """
+                fault:
+                  target: broker-link
+                  action: confirm-loss
+                  atOrder: 5
+                recovery:
+                  action: restore-network
+                """);
+        Fault fault = loader.parse(yaml, "confirm-loss.yaml").fault().orElseThrow();
+        assertThat(fault.action()).isEqualTo(FaultAction.CONFIRM_LOSS);
+        assertThat(fault.atOrder()).isEqualTo(5);
+        assertThat(fault.checkpoint()).isEmpty();
+        assertProblems(yaml.replace("atOrder: 5", "atOrder: 1"), "fault.atOrder");
+        assertProblems(yaml.replace("atOrder: 5", "atOrder: 21"), "exceeds workload.orders");
+        assertProblems(yaml.replace("atOrder: 5", "atOrder: 5\n  ordersDuringFault: 2"),
+                "fault.ordersDuringFault is not meaningful");
+        assertProblems(yaml.replace("initialStock: 100", "initialStock: 100\n  relayWorkers: 3"),
+                "confirm-loss needs one relay worker");
+        assertProblems(yaml.replace("initialStock: 100", "initialStock: 100\n  rollbackEvery: 5"),
+                "confirm-loss needs a committed order");
+        assertProblems(yaml.replace("action: restore-network", "action: restart"),
+                "action 'confirm-loss' needs 'restore-network'");
     }
 
     private void assertProblems(String yaml, String... fragments) {
