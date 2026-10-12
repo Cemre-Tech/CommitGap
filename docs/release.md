@@ -64,7 +64,6 @@ Replace the placeholders, which are deliberately not filled in:
 
 | Placeholder | Where |
 |---|---|
-| `[COMPANY_NAME]` | copyright holder in `LICENSE` |
 | `[SECURITY_CONTACT]` | SECURITY.md |
 | `[CONDUCT_CONTACT]` | CODE_OF_CONDUCT.md |
 | `[MAVEN_NAMESPACE]` | `groupId` and Java packages, currently the temporary `com.example.commitgap` |

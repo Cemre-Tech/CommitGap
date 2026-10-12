@@ -108,9 +108,9 @@ kapatılır (aksi halde `--keep` mümkün olmazdı); kesinti durumunda shutdown 
 Testcontainers hata mesajlarının container ortam değişkenlerini (parolalar dahil) içerdiğini bir
 entegrasyon testi gösterdi; rapora, manifest'e ve timeline'a giden her metin bu yüzden arındırılır.
 
-**Geçici namespace.** Şirket adı, alan adı ve Maven namespace'i verilmediği için uydurulmadı.
+**Geçici namespace.** Alan adı ve Maven namespace'i verilmediği için uydurulmadı.
 Kod, hiçbir gerçek kuruluşa ait olmayan `com.example.commitgap` ile derlenir; dokümantasyondaki
-`[COMPANY_NAME]`, `[GITHUB_ORG]`, `[SECURITY_CONTACT]`, `[CONDUCT_CONTACT]`, `[MAVEN_NAMESPACE]`
+`[GITHUB_ORG]`, `[SECURITY_CONTACT]`, `[CONDUCT_CONTACT]`, `[MAVEN_NAMESPACE]`
 yer tutucuları yayın öncesi doldurulmalıdır ([docs/release.md](docs/release.md)).
 
 ## Yeni deneyler ve harici uygulama örneği
