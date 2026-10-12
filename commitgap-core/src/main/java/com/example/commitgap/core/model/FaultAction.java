@@ -8,6 +8,8 @@ public enum FaultAction {
     KILL("kill"),
     /** Cut the publisher-to-broker link in Toxiproxy while orders keep arriving. */
     NETWORK_CUT("network-cut"),
+    /** Drop broker-to-publisher bytes on a warmed connection until an actual confirm timeout. */
+    CONFIRM_LOSS("confirm-loss"),
     /** Make the publisher send one event several times with the same event id. */
     DUPLICATE_PUBLISH("duplicate-publish");
 

@@ -8,8 +8,8 @@ that results stay honest: every reported outcome must come from a real measureme
 Requirements: Java 21+, Docker with Linux containers.
 
 ```bash
-git clone https://github.com/[GITHUB_ORG]/commitgap.git
-cd commitgap
+git clone https://github.com/Cemre-Tech/CommitGap.git
+cd CommitGap
 ./mvnw verify            # unit tests, no Docker
 ./mvnw -Pit verify       # integration tests against real containers
 ./commitgap doctor

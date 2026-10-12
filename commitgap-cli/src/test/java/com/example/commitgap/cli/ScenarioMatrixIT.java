@@ -123,6 +123,101 @@ class ScenarioMatrixIT {
         }
     }
 
+    @Test
+    void publisherCanLoseItsResultAfterBrokerAcceptanceWithoutRecordingTheFirstAttempt() {
+        assertThat(run("publisher-confirm-gap", Strategy.NAIVE_DUAL_WRITE).outcome())
+                .isEqualTo(Outcome.NOT_APPLICABLE);
+        for (Strategy s : List.of(Strategy.TRANSACTIONAL_OUTBOX, Strategy.OUTBOX_IDEMPOTENT)) {
+            RunResult r = run("publisher-confirm-gap", s);
+            assertKilled(r);
+            assertThat(r.outcome()).as(LabSupport.describe(r)).isEqualTo(r.expected());
+            assertThat(r.fault().checkpointContext()).containsEntry("brokerResult", "positive confirm, routable")
+                    .containsEntry("publishResult", "not recorded");
+            String event = r.fault().checkpointContext().get("eventId");
+            assertThat(confirmedPublishes(r, event)).as("only the retry could record its confirmed result").isEqualTo(1);
+            long deliveries = r.timeline().stream().filter(e -> "delivery".equals(e.kind())
+                    && event.equals(e.attributes().get("eventId"))).count();
+            assertThat(deliveries).as("the broker accepted the unrecorded first publish and the retry").isEqualTo(2);
+            assertThat(effects(r, event)).isEqualTo(s.idempotentConsumer() ? 1 : 2);
+        }
+    }
+
+    @Test
+    void consumerCrashInsideTheTransactionRollsBackAndRedeliveryAppliesOnce() {
+        for (Strategy s : Strategy.values()) {
+            RunResult r = run("consumer-transaction-crash", s);
+            assertKilled(r);
+            assertThat(r.outcome()).as(LabSupport.describe(r)).isEqualTo(Outcome.CONSISTENT);
+            assertThat(r.fault().checkpointContext()).containsEntry("transactionState", "uncommitted");
+            String event = r.fault().checkpointContext().get("eventId");
+            assertThat(effects(r, event)).isEqualTo(1);
+            assertThat(r.measurements().finalStock()).isEqualTo(82);
+            assertThat(r.timeline()).anyMatch(e -> "delivery".equals(e.kind()) && e.message().contains("redelivered")
+                    && e.message().contains("APPLIED") && event.equals(e.attributes().get("eventId")));
+            // Even the idempotent strategy must apply on redelivery: the killed dedup insert rolled back.
+            assertThat(r.timeline()).noneMatch(e -> "delivery".equals(e.kind())
+                    && e.message().contains("DUPLICATE_SKIPPED") && event.equals(e.attributes().get("eventId")));
+        }
+    }
+
+    @Test
+    void killedRelayReleasesItsDatabaseLockAndThePendingEventIsPublishedAfterRestart() {
+        assertThat(run("relay-lock-crash", Strategy.NAIVE_DUAL_WRITE).outcome()).isEqualTo(Outcome.NOT_APPLICABLE);
+        for (Strategy s : List.of(Strategy.TRANSACTIONAL_OUTBOX, Strategy.OUTBOX_IDEMPOTENT)) {
+            RunResult r = run("relay-lock-crash", s);
+            assertKilled(r);
+            assertThat(r.outcome()).as(LabSupport.describe(r)).isEqualTo(Outcome.CONSISTENT);
+            String event = r.fault().checkpointContext().get("eventId");
+            assertThat(confirmedPublishes(r, event)).isEqualTo(1);
+            assertThat(effects(r, event)).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void concurrentRelayWorkersLeaveExactlyOnePublishAndEffectPerCommittedEvent() {
+        for (Strategy s : Strategy.values()) {
+            RunResult r = run("competing-relays", s);
+            assertThat(r.outcome()).as(LabSupport.describe(r)).isEqualTo(Outcome.CONSISTENT);
+            assertThat(r.measurements().confirmedPublishes()).isEqualTo(18);
+            assertThat(r.measurements().finalStock()).isEqualTo(82);
+        }
+    }
+
+    @Test
+    void brokerAcceptanceWithoutAConfirmMakesTheOutboxRetryTheSameEvent() {
+        for (Strategy s : Strategy.values()) {
+            RunResult r = run("confirm-loss", s);
+            assertThat(r.fault().status()).as(LabSupport.describe(r)).isEqualTo(FaultExecution.Status.APPLIED);
+            assertThat(r.outcome()).as(LabSupport.describe(r)).isEqualTo(r.expected());
+            assertThat(r.fault().checkpointContext()).containsEntry("stream", "downstream")
+                    .containsEntry("publishResult", "TIMEOUT");
+            String event = r.fault().checkpointContext().get("eventId");
+            assertThat(r.timeline()).extracting(TimelineEvent::kind)
+                    .containsSubsequence("publisher-warmed", "downstream-toxic-installed", "confirm-loss-observed", "recovered");
+            long timeouts = r.timeline().stream().filter(e -> "publish".equals(e.kind())
+                    && e.message().contains("TIMEOUT") && event.equals(e.attributes().get("eventId"))).count();
+            assertThat(timeouts).as("the actual confirm future timed out once before the retry barrier released").isEqualTo(1);
+            long deliveries = r.timeline().stream().filter(e -> "delivery".equals(e.kind())
+                    && event.equals(e.attributes().get("eventId"))).count();
+            assertThat(deliveries).isEqualTo(s.usesOutboxRelay() ? 2 : 1);
+            assertThat(confirmedPublishes(r, event)).as("outbox retries once; naive producer does not retry its timeout")
+                    .isEqualTo(s.usesOutboxRelay() ? 1 : 0);
+            assertThat(effects(r, event)).isEqualTo(s == Strategy.TRANSACTIONAL_OUTBOX ? 2 : 1);
+            var firstDelivery = r.timeline().stream().filter(e -> "delivery".equals(e.kind())
+                    && event.equals(e.attributes().get("eventId"))).map(TimelineEvent::at).min(java.time.Instant::compareTo)
+                    .orElseThrow();
+            assertThat(r.fault().checkpointContext()).containsEntry("consumerReceivedAt", firstDelivery.toString());
+            var proof = r.timeline().stream().filter(e -> "confirm-loss-observed".equals(e.kind())).findFirst().orElseThrow();
+            assertThat(proof.at()).as("runner observed delivery plus timeout while the toxic remained installed")
+                    .isBefore(r.fault().recoveredAt());
+        }
+    }
+
+    private static long effects(RunResult r, String event) {
+        return r.timeline().stream().filter(e -> "business-effect".equals(e.kind())
+                && event.equals(e.attributes().get("eventId"))).count();
+    }
+
     private static RunResult run(String scenario, Strategy strategy) {
         RunResult r = LabSupport.run(scenario, strategy);
         System.out.println(LabSupport.describe(r));

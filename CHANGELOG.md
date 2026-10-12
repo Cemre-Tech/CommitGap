@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Event story in static HTML reports: recorded checkpoint, fault, recovery and per-event evidence,
+  with strategy mechanisms kept separate from measured correctness.
+- Dependency-light Java adapter SDK and a standalone Spring JDBC example with application-owned,
+  run-scoped observation, bounded cooperative checkpoints and measured loss/duplicate/safe cases.
+- `publisher-confirm-gap`, `confirm-loss`, `consumer-transaction-crash`, `competing-relays` and `relay-lock-crash`
+  scenarios; configurable relay workers coordinated by transaction-held PostgreSQL row locks.
+- Real downstream confirm loss on a warmed publishing connection, proven by both a same-event
+  publisher timeout and direct consumer receipt before restoring responses and allowing an outbox retry.
+
+### Fixed
+
+- Database snapshot queries now share a read-only repeatable-read transaction within each database;
+  a real PostgreSQL regression proves a writer cannot split stock and ledger observations.
+- Docker resource-cleanup integration test resolves its pinned probe image before using the raw
+  Docker API, so it no longer depends on a warm developer image cache.
+
 ## [0.1.0] - not released yet
 
 ### Added

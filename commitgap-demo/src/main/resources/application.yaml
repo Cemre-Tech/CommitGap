@@ -7,7 +7,8 @@ spring:
     banner-mode: off
   datasource:
     hikari:
-      maximum-pool-size: 6
+      # Up to eight relay transactions can hold a row lock while each logs on a second connection.
+      maximum-pool-size: 18
       connection-timeout: 5000
   rabbitmq:
     # Same broker settings for every strategy: confirms, returns, mandatory publishing.
@@ -30,6 +31,7 @@ commitgap:
   consumer-prefetch: 5
   initial-stock: 100
   relay-gate-open: true
+  relay-workers: 1
   relay-poll-millis: 100
   relay-max-attempts: 50
   confirm-timeout-millis: 3000

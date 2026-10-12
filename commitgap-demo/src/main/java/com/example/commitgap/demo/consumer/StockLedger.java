@@ -35,6 +35,11 @@ public class StockLedger {
     }
 
     public Outcome apply(OrderCreatedEvent event) {
+        return apply(event, () -> { });
+    }
+
+    /** Runs the checkpoint after all writes, while rollback can still remove every effect. */
+    public Outcome apply(OrderCreatedEvent event, Runnable beforeCommit) {
         return tx.execute(status -> {
             if (idempotent) {
                 int inserted = jdbc.update(
@@ -52,6 +57,7 @@ public class StockLedger {
             }
             jdbc.update("INSERT INTO stock_movement (event_id, order_id, sku, delta) VALUES (?, ?, ?, ?)",
                     event.eventId(), event.orderId(), event.sku(), -event.quantity());
+            beforeCommit.run();
             return Outcome.APPLIED;
         });
     }

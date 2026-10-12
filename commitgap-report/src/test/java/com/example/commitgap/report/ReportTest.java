@@ -60,6 +60,41 @@ class ReportTest {
     }
 
     @Test
+    void reportPreservesConfiguredRelayConcurrency() {
+        RunResult run = Fixtures.naiveCrash("Kill the producer.", 8);
+        ObjectNode report = ReportJson.build("run", run.runId(), List.of(run), Fixtures.T0);
+
+        assertThat(report.path("runs").get(0).path("scenario").path("workload")
+                .path("relayWorkers").asInt()).isEqualTo(8);
+        assertThat(SCHEMA.validate(report)).isEmpty();
+        assertThat(HtmlReport.render(report)).contains("8 relay worker(s)");
+    }
+
+    @Test
+    void schemaBoundsOptionalRelayConcurrency() {
+        RunResult run = Fixtures.naiveCrash("Kill the producer.");
+        ObjectNode report = ReportJson.build("run", run.runId(), List.of(run), Fixtures.T0);
+        ObjectNode workload = (ObjectNode) report.path("runs").get(0).path("scenario").path("workload");
+        workload.put("relayWorkers", 0);
+        assertThat(SCHEMA.validate(report)).isNotEmpty();
+        workload.put("relayWorkers", 9);
+        assertThat(SCHEMA.validate(report)).isNotEmpty();
+    }
+
+    @Test
+    void savedVersionOneWithoutRelayConcurrencyStillValidatesAndRegenerates(@TempDir Path dir) throws Exception {
+        RunResult run = Fixtures.naiveCrash("Kill the producer.");
+        ObjectNode report = ReportJson.build("run", run.runId(), List.of(run), Fixtures.T0);
+        ((ObjectNode) report.path("runs").get(0).path("scenario").path("workload")).remove("relayWorkers");
+        assertThat(SCHEMA.validate(report)).isEmpty();
+        Files.writeString(dir.resolve(ReportFiles.JSON), ReportJson.MAPPER.writeValueAsString(report));
+
+        ReportFiles.regenerate(dir);
+
+        assertThat(Files.readString(dir.resolve(ReportFiles.HTML))).contains("1 relay worker(s)", "Event story");
+    }
+
+    @Test
     void reportCarriesTheMeasuredEvidenceAndKeepsOutcomeApartFromExpectation() {
         RunResult run = Fixtures.naiveCrash("Kill the producer.");
         String lostEvent = run.fault().checkpointContext().get("eventId");

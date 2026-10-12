@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -59,6 +60,7 @@ public final class Lab implements AutoCloseable {
     private RabbitMQContainer rabbit;
     private ToxiproxyContainer toxiproxy;
     private Proxy brokerProxy;
+    private PublisherResponseToxic publisherResponseToxic;
     private final Map<ProcessRole, DemoProcess> processes = new EnumMap<>(ProcessRole.class);
     private final List<GenericContainer<?>> started = new ArrayList<>();
 
@@ -120,6 +122,8 @@ public final class Lab implements AutoCloseable {
         try {
             ToxiproxyClient client = new ToxiproxyClient(toxiproxy.getHost(), toxiproxy.getControlPort());
             brokerProxy = client.createProxy(BROKER_PROXY, "0.0.0.0:" + PROXY_PORT, "rabbitmq:5672");
+            publisherResponseToxic = new PublisherResponseToxic(
+                    URI.create("http://" + toxiproxy.getHost() + ":" + toxiproxy.getControlPort()), BROKER_PROXY);
         } catch (IOException e) {
             throw new LabException("cannot create the Toxiproxy broker link: " + e.getMessage(), e);
         }
@@ -183,6 +187,7 @@ public final class Lab implements AutoCloseable {
         env.put("COMMITGAP_ROLE", role.id());
         env.put("COMMITGAP_STRATEGY", strategy.id());
         env.put("COMMITGAP_CONSUMER_WORKERS", String.valueOf(workload.consumerWorkers()));
+        env.put("COMMITGAP_RELAY_WORKERS", String.valueOf(workload.relayWorkers()));
         env.put("COMMITGAP_INITIAL_STOCK", String.valueOf(workload.initialStock()));
         env.put("COMMITGAP_RELAY_GATE_OPEN", String.valueOf(relayGateInitiallyOpen));
         env.put("SPRING_DATASOURCE_URL", "jdbc:postgresql://postgres:5432/" + (publisher ? "producer" : "consumer"));
@@ -223,6 +228,20 @@ public final class Lab implements AutoCloseable {
 
     public void restoreBrokerLink() throws IOException {
         brokerProxy.enable();
+    }
+
+    /** Blackhole broker responses without blocking publishing on the existing upstream connection. */
+    public void dropPublisherResponses() throws IOException {
+        publisherResponseToxic.drop();
+    }
+
+    public void restorePublisherResponses() throws IOException {
+        publisherResponseToxic.restore();
+    }
+
+    /** Read the daemon's actual toxic configuration; do not trust a locally cached toxic. */
+    public boolean publisherResponsesDropped() throws IOException {
+        return publisherResponseToxic.dropped();
     }
 
     /** Asks Toxiproxy for the current state instead of trusting the cached proxy object. */

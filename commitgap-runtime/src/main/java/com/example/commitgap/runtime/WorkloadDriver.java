@@ -28,6 +28,7 @@ final class WorkloadDriver {
     private final WorkloadPlan plan;
     private final Strategy strategy;
     private final Fault networkFault;
+    private final Fault confirmLossFault;
     private final FaultSupervisor supervisor;
     private final Timeline timeline;
     private final List<String> obstacles;
@@ -42,6 +43,7 @@ final class WorkloadDriver {
         this.plan = plan;
         this.strategy = strategy;
         this.networkFault = fault != null && fault.action() == FaultAction.NETWORK_CUT ? fault : null;
+        this.confirmLossFault = fault != null && fault.action() == FaultAction.CONFIRM_LOSS ? fault : null;
         this.supervisor = supervisor;
         this.timeline = timeline;
         this.obstacles = obstacles;
@@ -57,6 +59,15 @@ final class WorkloadDriver {
         timeline.runner("workload-started", plan.orders().size() + " orders, seed " + plan.workload().seed());
         int restoreAfter = networkFault == null ? -1 : networkFault.atOrder() + networkFault.ordersDuringFault() - 1;
         for (PlannedOrder order : plan.orders()) {
+            if (confirmLossFault != null && order.number() == confirmLossFault.atOrder()) {
+                ConfirmLossFault execution = new ConfirmLossFault(lab, strategy, confirmLossFault, timeline, obstacles);
+                boolean completed = execution.execute(plan, order, () -> send(producer, order));
+                networkExecution = execution.result();
+                if (!completed) {
+                    return;
+                }
+                continue;
+            }
             if (networkFault != null && order.number() == networkFault.atOrder() && !cutLink()) {
                 return;
             }
@@ -79,7 +90,7 @@ final class WorkloadDriver {
             if (status == 201) {
                 timeline.runner("order", "order " + order.number() + " committed", attrs);
             } else if (status == 202) {
-                timeline.runner("order", "order " + order.number() + " committed but its event was not published: "
+                timeline.runner("order", "order " + order.number() + " committed; publication was not confirmed: "
                         + text(response, "publishResult") + " " + text(response, "detail"), attrs);
             } else if (status == 409 && order.rollback()) {
                 timeline.runner("order", "order " + order.number() + " rolled back (planned)", attrs);

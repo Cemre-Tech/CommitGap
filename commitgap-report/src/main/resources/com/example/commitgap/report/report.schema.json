@@ -88,7 +88,8 @@
                 "quantityPerOrder": { "type": "integer", "minimum": 1 },
                 "initialStock": { "type": "integer", "minimum": 0 },
                 "rollbackEvery": { "type": "integer", "minimum": 0 },
-                "consumerWorkers": { "type": "integer", "minimum": 1 }
+                "consumerWorkers": { "type": "integer", "minimum": 1 },
+                "relayWorkers": { "type": "integer", "minimum": 1, "maximum": 8 }
               }
             },
             "fault": { "type": "string" },

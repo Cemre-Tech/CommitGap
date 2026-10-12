@@ -26,6 +26,7 @@
 
   <modules>
     <module>commitgap-core</module>
+    <module>commitgap-adapter</module>
     <module>commitgap-report</module>
     <module>commitgap-demo</module>
     <module>commitgap-runtime</module>
@@ -66,6 +67,11 @@
       <dependency>
         <groupId>com.example.commitgap</groupId>
         <artifactId>commitgap-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.example.commitgap</groupId>
+        <artifactId>commitgap-adapter</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

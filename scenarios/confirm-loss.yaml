@@ -1,0 +1,29 @@
+# Real AMQP responses are dropped on the warmed downstream TCP path. Upstream publish remains open.
+schemaVersion: 1
+id: confirm-loss
+description: Drop broker-to-publisher bytes until the consumer receives the event and the real publisher confirm wait times out.
+workload:
+  seed: 42
+  orders: 20
+  quantityPerOrder: 1
+  initialStock: 100
+  rollbackEvery: 7
+fault:
+  target: broker-link
+  action: confirm-loss
+  atOrder: 5
+recovery:
+  action: restore-network
+observation:
+  timeoutSeconds: 30
+assertions:
+  - committed-order-has-business-effect
+  - stock-changed-once-per-event
+  - rolled-back-order-has-no-effect
+  - stock-matches-committed-orders
+  - dedup-record-matches-business-effect
+  - no-pending-work-after-recovery
+expectedByStrategy:
+  naive-dual-write: CONSISTENT
+  transactional-outbox: VIOLATION_OBSERVED
+  outbox-idempotent: CONSISTENT

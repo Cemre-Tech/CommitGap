@@ -40,13 +40,14 @@ public final class ScenarioLoader {
     private static final Set<String> ROOT_KEYS = Set.of("schemaVersion", "id", "description", "workload",
             "fault", "recovery", "observation", "assertions", "expectedByStrategy");
     private static final Set<String> WORKLOAD_KEYS = Set.of("seed", "orders", "quantityPerOrder",
-            "initialStock", "rollbackEvery", "consumerWorkers");
+            "initialStock", "rollbackEvery", "consumerWorkers", "relayWorkers");
     private static final Set<String> FAULT_KEYS = Set.of("target", "action", "checkpoint", "occurrence",
             "copies", "atOrder", "ordersDuringFault");
     private static final Map<FaultAction, Set<String>> FAULT_KEYS_BY_ACTION = Map.of(
             FaultAction.KILL, Set.of("target", "action", "checkpoint", "occurrence"),
             FaultAction.DUPLICATE_PUBLISH, Set.of("target", "action", "occurrence", "copies"),
-            FaultAction.NETWORK_CUT, Set.of("target", "action", "atOrder", "ordersDuringFault"));
+            FaultAction.NETWORK_CUT, Set.of("target", "action", "atOrder", "ordersDuringFault"),
+            FaultAction.CONFIRM_LOSS, Set.of("target", "action", "atOrder"));
     private static final Set<String> RECOVERY_KEYS = Set.of("action");
     private static final Set<String> OBSERVATION_KEYS = Set.of("timeoutSeconds", "quietPeriodMillis");
 
@@ -133,6 +134,7 @@ public final class ScenarioLoader {
         Integer initialStock = requireInt(m, "initialStock", path, 0, 10_000_000, p);
         int rollbackEvery = optionalInt(m, "rollbackEvery", path, 0, MAX_ORDERS, 0, p);
         int consumerWorkers = optionalInt(m, "consumerWorkers", path, 1, 8, 1, p);
+        int relayWorkers = optionalInt(m, "relayWorkers", path, 1, 8, 1, p);
         if (rollbackEvery == 1) {
             p.add("workload.rollbackEvery: 1 would roll back every order; use 0 (no rollbacks) or a value of 2 or more");
         }
@@ -143,7 +145,7 @@ public final class ScenarioLoader {
         if (seed == null || orders == null || quantity == null || initialStock == null) {
             return null;
         }
-        return new Workload(seed, orders, quantity, initialStock, rollbackEvery, consumerWorkers);
+        return new Workload(seed, orders, quantity, initialStock, rollbackEvery, consumerWorkers, relayWorkers);
     }
 
     private Optional<Fault> parseFault(Map<String, Object> m, Workload workload, Problems p) {
@@ -206,6 +208,23 @@ public final class ScenarioLoader {
                             + ") exceeds workload.orders (" + workload.orders() + ")");
                 }
             }
+            case CONFIRM_LOSS -> {
+                Integer at = requireInt(m, "atOrder", path, 2, MAX_ORDERS, p);
+                atOrder = at == null ? 0 : at;
+                if (target != null && target != FaultTarget.BROKER_LINK) {
+                    p.add("fault.target: action 'confirm-loss' applies to 'broker-link', not '" + target.id() + "'");
+                }
+                if (workload != null && at != null) {
+                    if (at > workload.orders()) {
+                        p.add("fault.atOrder: exceeds workload.orders (" + workload.orders() + ")");
+                    } else if (workload.isRolledBack(at)) {
+                        p.add("fault.atOrder: confirm-loss needs a committed order, not a planned rollback");
+                    }
+                    if (workload.relayWorkers() != 1) {
+                        p.add("workload.relayWorkers: confirm-loss needs one relay worker to isolate one publish and its retry");
+                    }
+                }
+            }
         }
         if ((action == FaultAction.KILL || action == FaultAction.DUPLICATE_PUBLISH) && occurrence > committed) {
             p.add("fault.occurrence: " + occurrence + " is larger than the number of committed orders in the workload ("
@@ -242,9 +261,9 @@ public final class ScenarioLoader {
                     p.add("recovery.action: 'restore-network' does not undo a 'kill'; use 'restart' or 'none'");
                 }
             }
-            case NETWORK_CUT -> {
+            case NETWORK_CUT, CONFIRM_LOSS -> {
                 if (action != RecoveryAction.RESTORE_NETWORK) {
-                    p.add("recovery.action: action 'network-cut' needs 'restore-network'");
+                    p.add("recovery.action: action '" + faultAction.id() + "' needs 'restore-network'");
                 }
             }
             case DUPLICATE_PUBLISH -> {
